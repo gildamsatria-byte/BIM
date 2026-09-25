@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mini BIM</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f6f5f2;--card:#fff;--fg:#1f2328;--mut:#6b7280;--line:#dcdad3;--ac:#0f6e56;--grid:#ebe9e3;--wall:#1f2328;--sel:#d85a30;--ghost:#9c9890}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171716;--card:#222220;--fg:#ecebe6;--mut:#9a9a92;--line:#3a3a36;--ac:#4fc3a1;--grid:#2c2c29;--wall:#ecebe6;--sel:#f0997b;--ghost:#5c5952}}
+:root[data-theme="dark"]{--bg:#171716;--card:#222220;--fg:#ecebe6;--mut:#9a9a92;--line:#3a3a36;--ac:#4fc3a1;--grid:#2c2c29;--wall:#ecebe6;--sel:#f0997b;--ghost:#5c5952}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:12px}
+h1{font-size:17px;margin:0 0 10px}
+.bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center}
+button{font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+button.sm{padding:3px 8px;font-size:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;min-width:0;margin-bottom:10px}
+.card h2{font-size:12px;margin:0 0 6px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+canvas,#v3{width:100%;height:360px;display:block;border-radius:6px}
+#hint{color:var(--mut);font-size:12px;margin:6px 0 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+label{font-size:12px;color:var(--mut)}
+select{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+input[type=number]{width:70px;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+input[type=text]{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:600;font-size:12px}
+textarea{width:100%;font:12px monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px}
+#json{height:100px}#ifc{height:90px}
+.wrap{overflow-x:auto}
+.lvlrow{display:flex;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
+.lvlrow:last-child{border-bottom:none}
+.lvlrow input[type=text]{width:110px}
+.lvlrow .elev{font-size:12px;color:var(--mut);min-width:78px}
+.propbox{width:100%;border-top:1px dashed var(--line);margin-top:8px;padding-top:8px}
+.propbox .row{margin-bottom:4px}
+.propbox textarea{height:44px}
+.custrow{display:flex;gap:4px;margin-bottom:4px}
+.custrow input{flex:1;min-width:0}
+</style></head><body>
+<h1>Mini BIM — pemodel gedung sederhana</h1>
+
+<div class="card" id="levelsCard">
+<h2>Level / Lantai</h2>
+<div id="levelsList"></div>
+<div class="row" style="margin-top:8px">
+<button id="addLevel">+ Tambah lantai</button>
+<label class="row" style="gap:4px"><input type="checkbox" id="ghostChk" checked> Tampilkan level di bawah sebagai referensi</label>
+<span class="row" style="margin-left:auto">
+<button id="newFile" style="border-color:#c0392b;color:#c0392b">🗑 Mulai dari file kosong</button>
+<span id="newFileConfirm" class="row" style="display:none">
+<b style="color:#c0392b;font-size:12px">Yakin? Semua lantai &amp; elemen akan hilang permanen.</b>
+<button id="newFileYes" class="sm" style="background:#c0392b;color:#fff;border-color:#c0392b">Ya, hapus &amp; mulai kosong</button>
+<button id="newFileNo" class="sm">Batal</button>
+</span></span>
+</div>
+</div>
+
+<div class="bar" id="tools">
+<button data-t="wall" class="on">Dinding</button><button data-t="curvewall">Dinding kurva</button><button data-t="door">Pintu</button><button data-t="window">Jendela</button><button data-t="column">Kolom</button><button data-t="floor">Lantai</button><button data-t="roof">Atap</button><button data-t="ceiling">Plafon</button><button data-t="void">Void lantai</button><button data-t="stair">Tangga</button><button data-t="dim">Dimensi</button><button data-t="text">Teks</button><button data-t="section">Garis potongan</button><button data-t="select">Pilih (geser elemen di sini)</button>
+<button id="del">Hapus terpilih</button><button id="clear">Kosongkan level ini</button>
+<span class="row"><label>Tinggi dinding baru</label><input type="number" id="gh" value="3" step="0.1" min="1"><label>Tebal</label><input type="number" id="gt" value="0.2" step="0.05" min="0.05"><label class="row" style="gap:4px"><input type="checkbox" id="curtainChk"> Curtain wall (kaca)</label></span>
+<span class="row"><label>Tipe/family aktif</label><select id="famSel"><option value="">(tidak ada)</option></select><button id="famSave" class="sm">💾 Simpan tipe dari elemen terpilih</button></span>
+</div>
+<div class="card" id="famCard"><h2>Tipe / Family kustom</h2><div id="famList"></div><p style="color:var(--mut);font-size:12px;margin:6px 0 0">Pilih elemen di denah (mode "Pilih"), lalu klik "Simpan tipe dari elemen terpilih" untuk menyimpan dimensinya sebagai tipe yang bisa dipakai ulang. Saat tool dinding/pintu/jendela/kolom/lantai/atap/tangga aktif, pilih tipe pada dropdown "Tipe/family aktif" agar elemen baru otomatis memakai dimensi tipe tersebut.</p></div>
+<div class="grid">
+<div class="card"><h2>Denah (2D) — <span id="curLvlLbl"></span></h2><canvas id="plan"></canvas><p id="hint"></p><div id="props"></div></div>
+<div class="card"><h2>Model 3D / Tampak / Potongan</h2>
+<div class="row" id="viewTools">
+<button data-v="3d" class="on">3D</button><button data-v="front">Depan</button><button data-v="back">Belakang</button><button data-v="left">Kiri</button><button data-v="right">Kanan</button><button data-v="section">Potongan</button>
+<button id="flipSec" class="sm">Balik arah potongan</button>
+</div>
+<p id="viewMsg" style="color:var(--mut);font-size:12px;margin:4px 0 6px"></p>
+<div id="v3"></div></div>
+</div>
+<div class="grid">
+<div class="card wrap"><h2>Schedule / kuantitas</h2><div id="sched"></div></div>
+<div class="card wrap"><h2>Daftar elemen & informasi</h2><div id="elist"></div></div>
+</div>
+<div class="grid">
+<div class="card"><h2>Data (JSON)</h2><textarea id="json" spellcheck="false"></textarea><div class="row" style="margin-top:6px"><button id="exp">Ekspor ke kotak</button><button id="imp">Muat dari kotak</button></div><p id="jsons" style="color:var(--mut);font-size:12px;margin:6px 0 0"></p></div>
+<div class="card"><h2>Ekspor IFC</h2><div class="row"><button id="ifcb">Ekspor IFC</button><button id="ifcc">Salin IFC</button></div><p id="ifcs" style="color:var(--mut);font-size:12px;margin:6px 0"></p><textarea id="ifc" spellcheck="false" readonly placeholder="Hasil IFC muncul di sini"></textarea></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const S={levels:[{id:1,name:'Lantai 1',height:3.5},{id:2,name:'Lantai 2',height:3}],walls:[],ops:[],slabs:[],cols:[],dims:[],notes:[],stairs:[],voids:[],families:[],section:null,id:3,cur:1};
+let tool='wall',start=null,hover=null,sel=null,cpts=[];
+const $=id=>document.getElementById(id),snap=v=>Math.round(v*2)/2;
+const WX=24,WY=16;
+function sample(){
+const w1=[0,0,8,0],w2=[8,0,8,6],w3=[8,6,0,6],w4=[0,6,0,0];
+const mk=(a,b,lv,h)=>({id:S.id++,levelId:lv,a:[a[0]+2,a[1]+2],b:[b[0]+2,b[1]+2],h,t:.2,glass:false,curve:null,joined:true,layers:null,info:null});
+const L1=[mk(w1.slice(0,2),w1.slice(2),1,3.5),mk(w2.slice(0,2),w2.slice(2),1,3.5),mk(w3.slice(0,2),w3.slice(2),1,3.5),mk(w4.slice(0,2),w4.slice(2),1,3.5)];
+const L2=[mk(w1.slice(0,2),w1.slice(2),2,3),mk(w2.slice(0,2),w2.slice(2),2,3),mk(w3.slice(0,2),w3.slice(2),2,3),mk(w4.slice(0,2),w4.slice(2),2,3)];
+S.walls=[...L1,...L2];
+S.ops=[{id:S.id++,levelId:1,wall:L1[0].id,d:2.5,type:'door',w:.9,h:2.1,sill:0,info:null},
+{id:S.id++,levelId:1,wall:L1[1].id,d:3,type:'window',w:1.5,h:1.2,sill:.9,info:null},
+{id:S.id++,levelId:2,wall:L2[1].id,d:3,type:'window',w:1.5,h:1.2,sill:.9,info:null}];
+S.slabs=[{id:S.id++,levelId:1,kind:'floor',a:[2,2],b:[10,8],t:.2,elev:0,rise:0,over:0,info:null},
+{id:S.id++,levelId:2,kind:'roof',a:[2,2],b:[10,8],t:.15,elev:3,rise:1.5,over:.4,info:null}];
+S.cols=[{id:S.id++,levelId:1,pos:[2,2],w:.3,d:.3,h:3.5,elev:0,info:null},{id:S.id++,levelId:1,pos:[10,2],w:.3,d:.3,h:3.5,elev:0,info:null}];
+S.dims=[{id:S.id++,levelId:1,a:[2,2],b:[10,2],off:.5}];
+S.notes=[{id:S.id++,levelId:1,pos:[4.5,9],text:'Contoh keterangan'}];
+S.stairs=[{id:S.id++,levelId:1,a:[3.5,3],b:[3.5,5.5],w:1.1,info:null}];
+S.voids=[];
+S.families=[];
+S.section={a:[6,-1],b:[6,9],flip:false};
+}
+try{const j=localStorage.getItem('minibim');if(j){Object.assign(S,JSON.parse(j));migrate()}else sample()}catch(e){sample()}
+function migrate(){
+if(!S.levels||!S.levels.length){S.levels=[{id:1,name:'Lantai 1',height:+($('gh')?$('gh').value:3)||3}];S.cur=1;
+for(const w of S.walls)w.levelId=1;for(const o of S.ops)o.levelId=1;for(const s of S.slabs)s.levelId=1;}
+if(!S.cols)S.cols=[];if(!S.dims)S.dims=[];if(!S.notes)S.notes=[];if(S.section===undefined)S.section=null;
+if(!S.stairs)S.stairs=[];if(!S.voids)S.voids=[];if(!S.families)S.families=[];
+for(const w of S.walls){if(w.info===undefined)w.info=null;if(w.glass===undefined)w.glass=false;if(w.curve===undefined)w.curve=null;if(w.joined===undefined)w.joined=true;if(w.layers===undefined)w.layers=null}
+for(const o of S.ops)if(o.info===undefined)o.info=null;
+for(const s of S.slabs){if(s.info===undefined)s.info=null;if(s.layers===undefined)s.layers=null;if(s.kind==='ceiling'&&s.over===undefined)s.over=0}
+for(const st of S.stairs){if(st.info===undefined)st.info=null;if(!st.w)st.w=1.1}
+for(const vd of S.voids)if(vd.info===undefined)vd.info=null;
+if(!S.cur||!S.levels.find(l=>l.id===S.cur))S.cur=S.levels[0].id;
+}
+migrate();
+function save(){try{localStorage.setItem('minibim',JSON.stringify(S))}catch(e){}}
+const rect=s=>[Math.min(s.a[0],s.b[0]),Math.min(s.a[1],s.b[1]),Math.max(s.a[0],s.b[0]),Math.max(s.a[1],s.b[1])];
+const wallOf=id=>S.walls.find(w=>w.id===id);
+function curLevel(){return S.levels.find(l=>l.id===S.cur)}
+function levelElev(id){let e=0;for(const lv of S.levels){if(lv.id===id)return e;e+=lv.height}return e}
+function levelBelowOf(id){const i=S.levels.findIndex(l=>l.id===id);return i>0?S.levels[i-1]:null}
+// ---------- geometry helpers (dinding kurva) ----------
+function circleThrough(a,b,m){
+const ax=a[0],ay=a[1],bx=b[0],by=b[1],mx=m[0],my=m[1];
+const d=2*(ax*(by-my)+bx*(my-ay)+mx*(ay-by));
+if(Math.abs(d)<1e-9)return null;
+const ux=((ax*ax+ay*ay)*(by-my)+(bx*bx+by*by)*(my-ay)+(mx*mx+my*my)*(ay-by))/d;
+const uy=((ax*ax+ay*ay)*(mx-bx)+(bx*bx+by*by)*(ax-mx)+(mx*mx+my*my)*(bx-ax))/d;
+return{cx:ux,cy:uy,r:Math.hypot(ax-ux,ay-uy)}}
+function arcPoints(a,m,b,n){
+const c=circleThrough(a,m,b);if(!c)return[a,b];
+const norm=x=>{while(x<0)x+=2*Math.PI;while(x>=2*Math.PI)x-=2*Math.PI;return x};
+const ang=p=>norm(Math.atan2(p[1]-c.cy,p[0]-c.cx));
+const a0=ang(a),a1=ang(b),am=ang(m);
+const diff=norm(a1-a0),diffM=norm(am-a0);
+const ccw=diffM<=diff;
+const sweep=ccw?diff:-(2*Math.PI-diff);
+const pts=[];for(let i=0;i<=n;i++){const t=a0+sweep*i/n;pts.push([c.cx+c.r*Math.cos(t),c.cy+c.r*Math.sin(t)])}
+return pts}
+function wallPts(w){return w.curve?arcPoints(w.a,w.curve,w.b,16):[w.a,w.b]}
+function wallLen(w){const pts=wallPts(w);let s=0;for(let i=0;i<pts.length-1;i++)s+=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);return s}
+const len=wallLen;
+function polylineProj(p,pts){let best=null,acc=0;
+for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1])||1e-9,ux=(b[0]-a[0])/L,uy=(b[1]-a[1])/L;
+let d=(p[0]-a[0])*ux+(p[1]-a[1])*uy;d=Math.max(0,Math.min(L,d));
+const qx=a[0]+ux*d,qy=a[1]+uy*d,dist=Math.hypot(qx-p[0],qy-p[1]);
+if(!best||dist<best.dist)best={dist,d:acc+d,ux,uy};acc+=L}
+return best||{dist:1e9,d:0,ux:1,uy:0}}
+function proj(p,w){return polylineProj(p,wallPts(w))}
+// ---------- void-subtraction helper (void lantai) ----------
+function rectMinusHole(outer,hole){
+const ox0=outer[0],oz0=outer[1],ox1=outer[2],oz1=outer[3];
+const hx0=Math.max(hole[0],ox0),hz0=Math.max(hole[1],oz0),hx1=Math.min(hole[2],ox1),hz1=Math.min(hole[3],oz1);
+if(hx0>=hx1||hz0>=hz1)return[outer];
+const pieces=[];
+if(hz0>oz0)pieces.push([ox0,oz0,ox1,hz0]);
+if(hz1<oz1)pieces.push([ox0,hz1,ox1,oz1]);
+if(hx0>ox0)pieces.push([ox0,hz0,hx0,hz1]);
+if(hx1<ox1)pieces.push([hx1,hz0,ox1,hz1]);
+return pieces.length?pieces:[outer]}
+function slabPiecesMinusVoids(outer,levelId){
+let pieces=[outer];
+for(const vd of S.voids.filter(v=>v.levelId===levelId)){const hr=rect(vd);const next=[];for(const p of pieces)next.push(...rectMinusHole(p,hr));pieces=next}
+return pieces}
+// ---------- lapisan konstruksi ----------
+function sumLayers(layers){return layers.reduce((a,l)=>a+(+l.t||0),0)}
+function hsl2hex(h,s,l){s/=100;l/=100;const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),f=n=>l-a*Math.max(-1,Math.min(Math.min(k(n)-3,9-k(n)),1));
+const rr=Math.round(255*f(0)),gg=Math.round(255*f(8)),bb=Math.round(255*f(4));return(rr<<16)+(gg<<8)+bb}
+const layerPalette=[0xd9d4c7,0xb8b2a4,0x9c8f73,0xc9c2b3,0x8a7f68,0xe4dfce];
+function layerColor(material,idx){
+if(!material)return layerPalette[idx%layerPalette.length];
+let h=0;for(let i=0;i<material.length;i++)h=(h*31+material.charCodeAt(i))>>>0;
+return hsl2hex(h%360,32,58)}
+// ---------- tangga ----------
+function stairSteps(st){const lv=S.levels.find(l=>l.id===st.levelId),h=lv?lv.height:3,n=Math.max(2,Math.round(h/.17)),run=Math.hypot(st.b[0]-st.a[0],st.b[1]-st.a[1])/n;
+return{n,riser:h/n,run}}
+// ---------- levels UI ----------
+let armedDelLevels=new Set();
+function renderLevels(){
+const el=$('levelsList');el.innerHTML='';
+S.levels.slice().reverse().forEach(lv=>{
+const row=document.createElement('div');row.className='lvlrow';
+const active=lv.id===S.cur;
+row.innerHTML=`<button class="sm ${active?'on':''}" data-act="${lv.id}">${active?'● Aktif':'Aktifkan'}</button>`;
+const nm=document.createElement('input');nm.type='text';nm.value=lv.name;nm.onchange=()=>{lv.name=nm.value||lv.name;save();renderLevels()};
+const hl=document.createElement('label');hl.textContent='Tinggi';
+const hi=document.createElement('input');hi.type='number';hi.step='0.1';hi.min='0.5';hi.value=lv.height;
+hi.onchange=()=>{lv.height=Math.max(.5,+hi.value);commit()};
+const ev=document.createElement('span');ev.className='elev';ev.textContent='Elev '+levelElev(lv.id).toFixed(2)+' m';
+const del=document.createElement('button');del.className='sm';del.disabled=S.levels.length<=1;
+const armed=armedDelLevels.has(lv.id);del.textContent=armed?'Yakin? Klik lagi':'Hapus';if(armed){del.style.color='#c0392b';del.style.borderColor='#c0392b'}
+del.onclick=()=>{if(S.levels.length<=1)return;
+if(!armedDelLevels.has(lv.id)){armedDelLevels.add(lv.id);renderLevels();return}
+armedDelLevels.delete(lv.id);
+S.walls=S.walls.filter(w=>w.levelId!==lv.id);S.ops=S.ops.filter(o=>o.levelId!==lv.id);S.slabs=S.slabs.filter(s=>s.levelId!==lv.id);
+S.cols=S.cols.filter(c=>c.levelId!==lv.id);S.dims=S.dims.filter(d=>d.levelId!==lv.id);S.notes=S.notes.filter(nt=>nt.levelId!==lv.id);
+S.stairs=S.stairs.filter(st=>st.levelId!==lv.id);S.voids=S.voids.filter(v=>v.levelId!==lv.id);
+S.levels=S.levels.filter(l=>l.id!==lv.id);if(S.cur===lv.id)S.cur=S.levels[0].id;sel=null;commit()};
+row.append(nm,hl,hi,ev,del);
+row.querySelector('[data-act]').onclick=()=>{S.cur=lv.id;sel=null;$('gh').value=lv.height;commit()};
+el.appendChild(row)});
+$('curLvlLbl').textContent=curLevel()?curLevel().name:'';
+}
+$('addLevel').onclick=()=>{const h=+$('gh').value||3;const id=S.id++;S.levels.push({id,name:'Lantai '+(S.levels.length+1),height:h});S.cur=id;sel=null;commit()};
+function resetAll(){S.levels=[{id:1,name:'Lantai 1',height:3}];S.walls=[];S.ops=[];S.slabs=[];S.cols=[];S.dims=[];S.notes=[];S.stairs=[];S.voids=[];S.section=null;S.cur=1;S.id=2;sel=null;start=null;cpts=[];$('gh').value=3;commit()}
+$('newFile').onclick=()=>{$('newFile').style.display='none';$('newFileConfirm').style.display='flex'};
+$('newFileNo').onclick=()=>{$('newFile').style.display='';$('newFileConfirm').style.display='none'};
+$('newFileYes').onclick=()=>{resetAll();$('newFile').style.display='';$('newFileConfirm').style.display='none'};
+$('ghostChk').onchange=draw;
+// ---------- 2D ----------
+const cv=$('plan'),cx=cv.getContext('2d');let sc=1;
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function curWalls(){return S.walls.filter(w=>w.levelId===S.cur)}
+function curSlabs(){return S.slabs.filter(s=>s.levelId===S.cur)}
+function curOps(){return S.ops.filter(o=>o.levelId===S.cur)}
+function curCols(){return S.cols.filter(c=>c.levelId===S.cur)}
+function curDims(){return S.dims.filter(d=>d.levelId===S.cur)}
+function curNotes(){return S.notes.filter(n=>n.levelId===S.cur)}
+function curStairs(){return S.stairs.filter(s=>s.levelId===S.cur)}
+function curVoids(){return S.voids.filter(v=>v.levelId===S.cur)}
+function polyPath(pts){cx.beginPath();pts.forEach((p,i)=>i?cx.lineTo(p[0]*sc,p[1]*sc):cx.moveTo(p[0]*sc,p[1]*sc))}
+function draw(){const W=cv.clientWidth,H=cv.clientHeight,r=devicePixelRatio||1;cv.width=W*r;cv.height=H*r;cx.setTransform(r,0,0,r,0,0);
+sc=Math.min(W/WX,H/WY);cx.clearRect(0,0,W,H);cx.strokeStyle=css('--grid');cx.lineWidth=1;
+for(let x=0;x<=WX;x++){cx.beginPath();cx.moveTo(x*sc,0);cx.lineTo(x*sc,WY*sc);cx.stroke()}
+for(let y=0;y<=WY;y++){cx.beginPath();cx.moveTo(0,y*sc);cx.lineTo(WX*sc,y*sc);cx.stroke()}
+if($('ghostChk').checked){const lb=levelBelowOf(S.cur);if(lb){cx.strokeStyle=css('--ghost');cx.setLineDash([4,3]);cx.lineWidth=2;
+for(const w of S.walls.filter(w=>w.levelId===lb.id)){polyPath(wallPts(w));cx.stroke()}
+cx.setLineDash([])}}
+for(const s of curSlabs()){const r=rect(s),rf=s.kind==='roof',cl=s.kind==='ceiling',o=rf?s.over:0,sl=sel&&sel.k==='s'&&sel.id===s.id,X=(r[0]-o)*sc,Y=(r[1]-o)*sc,W2=(r[2]-r[0]+2*o)*sc,H2=(r[3]-r[1]+2*o)*sc;
+cx.fillStyle=rf?'rgba(216,90,48,.12)':cl?'rgba(108,92,231,.15)':'rgba(15,110,86,.12)';cx.strokeStyle=sl?css('--sel'):(rf?'#d85a30':cl?'#6c5ce7':'#0f6e56');cx.lineWidth=sl?2.5:1.5;cx.setLineDash(rf?[8,4]:cl?[2,2]:[]);cx.fillRect(X,Y,W2,H2);cx.strokeRect(X,Y,W2,H2);cx.setLineDash([])}
+for(const vd of curVoids()){const r=rect(vd),sl=sel&&sel.k==='vd'&&sel.id===vd.id,X=r[0]*sc,Y=r[1]*sc,W2=(r[2]-r[0])*sc,H2=(r[3]-r[1])*sc;
+cx.save();cx.beginPath();cx.rect(X,Y,W2,H2);cx.clip();cx.strokeStyle=sl?css('--sel'):'#c0392b';cx.lineWidth=1;
+for(let d=-H2;d<W2;d+=8){cx.beginPath();cx.moveTo(X+d,Y);cx.lineTo(X+d+H2,Y+H2);cx.stroke()}
+cx.restore();cx.strokeStyle=sl?css('--sel'):'#c0392b';cx.lineWidth=sl?2.5:1.5;cx.strokeRect(X,Y,W2,H2)}
+for(const w of curWalls()){cx.strokeStyle=sel&&sel.k==='w'&&sel.id===w.id?css('--sel'):(w.glass?'#2f8fd8':css('--wall'));cx.lineWidth=Math.max(2,w.t*sc);cx.lineCap='butt';
+polyPath(wallPts(w));cx.stroke()}
+for(const o of curOps()){const w=wallOf(o.wall);if(!w)continue;const p=proj([0,0],w),ux=p.ux,uy=p.uy,c=[w.a[0]+ux*o.d,w.a[1]+uy*o.d];
+cx.strokeStyle=sel&&sel.k==='o'&&sel.id===o.id?css('--sel'):(o.type==='door'?'#c8781e':'#2f8fd8');cx.lineWidth=Math.max(3,w.t*sc*.6);
+cx.beginPath();cx.moveTo((c[0]-ux*o.w/2)*sc,(c[1]-uy*o.w/2)*sc);cx.lineTo((c[0]+ux*o.w/2)*sc,(c[1]+uy*o.w/2)*sc);cx.stroke();
+cx.strokeStyle=css('--card');cx.lineWidth=1.5;cx.stroke()}
+for(const c of curCols()){const sl=sel&&sel.k==='c'&&sel.id===c.id;cx.fillStyle='#6b5a3e';cx.strokeStyle=sl?css('--sel'):'#3d3223';cx.lineWidth=sl?2.5:1.5;
+cx.fillRect((c.pos[0]-c.w/2)*sc,(c.pos[1]-c.d/2)*sc,c.w*sc,c.d*sc);cx.strokeRect((c.pos[0]-c.w/2)*sc,(c.pos[1]-c.d/2)*sc,c.w*sc,c.d*sc)}
+for(const st of curStairs()){const dx=st.b[0]-st.a[0],dy=st.b[1]-st.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,nx=-uy,ny=ux,sl=sel&&sel.k==='st'&&sel.id===st.id,{n}=stairSteps(st);
+cx.strokeStyle=sl?css('--sel'):'#6b5a3e';cx.lineWidth=sl?2.5:1.5;
+const c1=[st.a[0]+nx*st.w/2,st.a[1]+ny*st.w/2],c2=[st.b[0]+nx*st.w/2,st.b[1]+ny*st.w/2],c3=[st.b[0]-nx*st.w/2,st.b[1]-ny*st.w/2],c4=[st.a[0]-nx*st.w/2,st.a[1]-ny*st.w/2];
+polyPath([c1,c2,c3,c4]);cx.closePath();cx.stroke();
+for(let i=1;i<n;i++){const t=i/n,px=st.a[0]+ux*Ln*t,py=st.a[1]+uy*Ln*t;
+cx.beginPath();cx.moveTo((px+nx*st.w/2)*sc,(py+ny*st.w/2)*sc);cx.lineTo((px-nx*st.w/2)*sc,(py-ny*st.w/2)*sc);cx.stroke()}
+cx.fillStyle=css('--fg');cx.font='10px system-ui';cx.fillText('NAIK',st.b[0]*sc+4,st.b[1]*sc-4)}
+for(const d of curDims()){const sl=sel&&sel.k==='d'&&sel.id===d.id,dx=d.b[0]-d.a[0],dy=d.b[1]-d.a[1],Ln=Math.hypot(dx,dy)||1,nx=-dy/Ln,ny=dx/Ln,ox=nx*d.off,oy=ny*d.off,
+a2=[d.a[0]+ox,d.a[1]+oy],b2=[d.b[0]+ox,d.b[1]+oy];cx.strokeStyle=sl?css('--sel'):css('--fg');cx.lineWidth=1;cx.setLineDash([]);
+cx.beginPath();cx.moveTo(d.a[0]*sc,d.a[1]*sc);cx.lineTo(a2[0]*sc,a2[1]*sc);cx.moveTo(d.b[0]*sc,d.b[1]*sc);cx.lineTo(b2[0]*sc,b2[1]*sc);
+cx.moveTo(a2[0]*sc,a2[1]*sc);cx.lineTo(b2[0]*sc,b2[1]*sc);cx.stroke();
+const mx=(a2[0]+b2[0])/2*sc,my=(a2[1]+b2[1])/2*sc;cx.fillStyle=css('--card');const lbl=Ln.toFixed(2)+' m',tw=cx.measureText(lbl).width;
+cx.fillRect(mx-tw/2-3,my-14,tw+6,14);cx.fillStyle=css('--fg');cx.font='11px system-ui';cx.textAlign='center';cx.fillText(lbl,mx,my-3);cx.textAlign='left'}
+for(const nt of curNotes()){const sl=sel&&sel.k==='n'&&sel.id===nt.id;cx.font='12px system-ui';const tw=cx.measureText(nt.text).width;
+cx.fillStyle=sl?css('--sel'):css('--card');cx.strokeStyle=sl?css('--sel'):css('--line');cx.lineWidth=1;
+cx.fillRect(nt.pos[0]*sc,nt.pos[1]*sc-14,tw+8,18);cx.strokeRect(nt.pos[0]*sc,nt.pos[1]*sc-14,tw+8,18);
+cx.fillStyle=css('--fg');cx.fillText(nt.text,nt.pos[0]*sc+4,nt.pos[1]*sc-1)}
+if(S.section){const{a,b,flip}=S.section,dx=b[0]-a[0],dy=b[1]-a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln;let nx=uy,ny=-ux;if(flip){nx=-nx;ny=-ny}
+cx.strokeStyle='#8a2be2';cx.setLineDash([10,5]);cx.lineWidth=2;cx.beginPath();cx.moveTo(a[0]*sc,a[1]*sc);cx.lineTo(b[0]*sc,b[1]*sc);cx.stroke();cx.setLineDash([]);
+const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;cx.beginPath();cx.moveTo(mx*sc,my*sc);cx.lineTo((mx+nx*.8)*sc,(my+ny*.8)*sc);cx.stroke();
+cx.fillStyle='#8a2be2';cx.beginPath();cx.arc((mx+nx*.8)*sc,(my+ny*.8)*sc,4,0,7);cx.fill();
+cx.font='11px system-ui';cx.fillText('Potongan',mx*sc+6,my*sc-6)}
+if(start&&hover&&(tool==='floor'||tool==='roof'||tool==='ceiling'||tool==='void')){cx.strokeStyle=css('--ac');cx.setLineDash([6,4]);cx.lineWidth=2;cx.strokeRect(start[0]*sc,start[1]*sc,(hover[0]-start[0])*sc,(hover[1]-start[1])*sc);cx.setLineDash([])}
+if(start&&hover&&(tool==='wall'||tool==='dim'||tool==='section'||tool==='stair')){cx.strokeStyle=tool==='section'?'#8a2be2':css('--ac');cx.setLineDash([6,4]);cx.lineWidth=2;cx.beginPath();cx.moveTo(start[0]*sc,start[1]*sc);cx.lineTo(hover[0]*sc,hover[1]*sc);cx.stroke();cx.setLineDash([]);
+cx.fillStyle=css('--fg');cx.font='12px system-ui';cx.fillText(Math.hypot(hover[0]-start[0],hover[1]-start[1]).toFixed(2)+' m',hover[0]*sc+8,hover[1]*sc-8)}
+if(tool==='curvewall'&&hover){cx.strokeStyle=css('--ac');cx.setLineDash([6,4]);cx.lineWidth=2;
+if(cpts.length===1){cx.beginPath();cx.moveTo(cpts[0][0]*sc,cpts[0][1]*sc);cx.lineTo(hover[0]*sc,hover[1]*sc);cx.stroke()}
+else if(cpts.length===2){polyPath(arcPoints(cpts[0],hover,cpts[1],16));cx.stroke()}
+cx.setLineDash([])}
+if(hover&&(tool==='wall'||tool==='curvewall'||tool==='floor'||tool==='roof'||tool==='ceiling'||tool==='void'||tool==='column'||tool==='dim'||tool==='section'||tool==='stair')){cx.fillStyle=css('--ac');cx.beginPath();cx.arc(hover[0]*sc,hover[1]*sc,4,0,7);cx.fill()}
+if(sel&&sel.k==='w'){const w=wallOf(sel.id);if(w){cx.fillStyle=css('--sel');for(const hp of[w.a,w.b]){cx.beginPath();cx.arc(hp[0]*sc,hp[1]*sc,5,0,7);cx.fill();cx.strokeStyle=css('--card');cx.lineWidth=1.5;cx.stroke()}}}}
+function pt(e){const r=cv.getBoundingClientRect();return[(e.clientX-r.left)/sc,(e.clientY-r.top)/sc]}
+function nearestWall(p,max,straightOnly){let b=null;for(const w of curWalls()){if(straightOnly&&w.curve)continue;const q=proj(p,w);if(q.dist<max&&(!b||q.dist<b.q.dist))b={w,q}}return b}
+let dragInfo=null;
+cv.addEventListener('pointermove',e=>{const p=pt(e);
+if(dragInfo){updateDrag(p);return}
+hover=(tool==='wall'||tool==='curvewall'||tool==='floor'||tool==='roof'||tool==='ceiling'||tool==='void'||tool==='column'||tool==='dim'||tool==='section'||tool==='stair')?[snap(p[0]),snap(p[1])]:p;draw()});
+cv.addEventListener('pointerdown',e=>{const p=pt(e);
+if(tool==='wall'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const wo={id:S.id++,levelId:S.cur,a:start,b:q,h:+$('gh').value,t:+$('gt').value,glass:$('curtainChk').checked,curve:null,info:null};applyFamilyAttrs('wall',wo);S.walls.push(wo);start=q;commit()}}
+else if(tool==='curvewall'){const q=[snap(p[0]),snap(p[1])];
+if(cpts.length<2)cpts.push(q);
+else{const wo={id:S.id++,levelId:S.cur,a:cpts[0],b:cpts[1],curve:q,h:+$('gh').value,t:+$('gt').value,glass:$('curtainChk').checked,info:null};applyFamilyAttrs('wall',wo);S.walls.push(wo);sel={k:'w',id:wo.id};cpts=[];start=null;commit()}}
+else if(tool==='floor'||tool==='roof'||tool==='ceiling'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]&&q[1]!==start[1]){const rf=tool==='roof',cl=tool==='ceiling';const so={id:S.id++,levelId:S.cur,kind:tool,a:start,b:q,t:cl?.02:(rf?.15:.2),elev:cl?Math.max(2.2,curLevel().height-.3):(rf?curLevel().height:0),rise:rf?1.5:0,over:rf?.4:0,layers:null,info:null};applyFamilyAttrs(tool,so);S.slabs.push(so);sel={k:'s',id:so.id};start=null;commit()}}
+else if(tool==='void'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]&&q[1]!==start[1]){S.voids.push({id:S.id++,levelId:S.cur,a:start,b:q,info:null});sel={k:'vd',id:S.id-1};start=null;commit()}}
+else if(tool==='stair'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const sto={id:S.id++,levelId:S.cur,a:start,b:q,w:1.1,info:null};applyFamilyAttrs('stair',sto);S.stairs.push(sto);sel={k:'st',id:sto.id};start=null;commit()}}
+else if(tool==='door'||tool==='window'){const n=nearestWall(p,.6,true);if(n){const dr=tool==='door';const oo={id:S.id++,levelId:S.cur,wall:n.w.id,d:n.q.d,type:tool,w:dr?.9:1.5,h:dr?2.1:1.2,sill:dr?0:.9,info:null};applyFamilyAttrs(tool,oo);S.ops.push(oo);sel={k:'o',id:S.ops[S.ops.length-1].id};commit()}}
+else if(tool==='column'){const q=[snap(p[0]),snap(p[1])];const co={id:S.id++,levelId:S.cur,pos:q,w:.3,d:.3,h:curLevel().height,elev:0,info:null};applyFamilyAttrs('col',co);S.cols.push(co);sel={k:'c',id:co.id};commit()}
+else if(tool==='dim'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){S.dims.push({id:S.id++,levelId:S.cur,a:start,b:q,off:.5});sel={k:'d',id:S.id-1};start=null;commit()}}
+else if(tool==='text'){S.notes.push({id:S.id++,levelId:S.cur,pos:[p[0],p[1]],text:'Keterangan'});sel={k:'n',id:S.id-1};commit()}
+else if(tool==='section'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){S.section={a:start,b:q,flip:false};start=null;save();draw();if(viewMode==='section')render3();$('viewMsg').textContent=''}}
+else{
+if(sel&&sel.k==='w'){const w=wallOf(sel.id);if(w){const da=Math.hypot(p[0]-w.a[0],p[1]-w.a[1]),db=Math.hypot(p[0]-w.b[0],p[1]-w.b[1]),HR=.28;
+if(da<HR){startDrag('endpoint',{wall:w,end:'a'},p);return}
+if(db<HR){startDrag('endpoint',{wall:w,end:'b'},p);return}}}
+const f=hitTest(p);
+if(sel&&f&&f.k===sel.k&&f.id===sel.id&&f.k!=='o'){startDrag('body',sel,p);return}
+if(sel&&f&&f.k==='o'&&f.id===sel.id){startDrag('op',{wall:wallOf(S.ops.find(o=>o.id===f.id).wall)},p);return}
+sel=f;props();draw()}});
+function hitTest(p){let f=null;for(const o of curOps()){const w=wallOf(o.wall),q=proj(p,w);if(q.dist<.5&&Math.abs(q.d-o.d)<o.w/2+.2)f={k:'o',id:o.id}}
+if(!f){const n=nearestWall(p,.4);if(n)f={k:'w',id:n.w.id}}
+if(!f){for(const c of curCols()){if(Math.abs(p[0]-c.pos[0])<c.w/2+.15&&Math.abs(p[1]-c.pos[1])<c.d/2+.15)f={k:'c',id:c.id}}}
+if(!f){for(const s of curSlabs()){const r=rect(s);if(p[0]>=r[0]&&p[0]<=r[2]&&p[1]>=r[1]&&p[1]<=r[3])f={k:'s',id:s.id}}}
+if(!f){for(const st of curStairs()){const q=proj(p,{a:st.a,b:st.b});if(q.dist<st.w/2+.15)f={k:'st',id:st.id}}}
+if(!f){for(const vd of curVoids()){const r=rect(vd);if(p[0]>=r[0]&&p[0]<=r[2]&&p[1]>=r[1]&&p[1]<=r[3])f={k:'vd',id:vd.id}}}
+if(!f){for(const nt of curNotes()){if(Math.hypot(p[0]-nt.pos[0]-.3,p[1]-nt.pos[1])<.5)f={k:'n',id:nt.id}}}
+if(!f){for(const d of curDims()){const dx=d.b[0]-d.a[0],dy=d.b[1]-d.a[1],Ln=Math.hypot(dx,dy)||1,nx=-dy/Ln,ny=dx/Ln,ox=nx*d.off,oy=ny*d.off,mid=[(d.a[0]+d.b[0])/2+ox,(d.a[1]+d.b[1])/2+oy];if(Math.hypot(p[0]-mid[0],p[1]-mid[1])<.4)f={k:'d',id:d.id}}}
+return f}
+function joinGroupAt(w,pt0){const eps=.03,res=[];if(!w.joined)return res;
+for(const w2 of S.walls){if(w2.id===w.id||w2.levelId!==w.levelId||!w2.joined)continue;
+if(Math.hypot(w2.a[0]-pt0[0],w2.a[1]-pt0[1])<eps)res.push({w:w2,end:'a'});
+if(Math.hypot(w2.b[0]-pt0[0],w2.b[1]-pt0[1])<eps)res.push({w:w2,end:'b'})}
+return res}
+function snapshotFor(s){if(s.k==='c'){const c=S.cols.find(c=>c.id===s.id);return{pos:c.pos.slice()}}
+if(s.k==='st'){const x=S.stairs.find(x=>x.id===s.id);return{a:x.a.slice(),b:x.b.slice()}}
+if(s.k==='vd'){const x=S.voids.find(x=>x.id===s.id);return{a:x.a.slice(),b:x.b.slice()}}
+if(s.k==='s'){const x=S.slabs.find(x=>x.id===s.id);return{a:x.a.slice(),b:x.b.slice()}}
+if(s.k==='n'){const x=S.notes.find(x=>x.id===s.id);return{pos:x.pos.slice()}}
+if(s.k==='d'){const x=S.dims.find(x=>x.id===s.id);return{a:x.a.slice(),b:x.b.slice()}}
+return null}
+function startDrag(kind,payload,downPt){const startSnap=[snap(downPt[0]),snap(downPt[1])];dragInfo={kind,payload,startSnap};
+if(kind==='endpoint'){const w=payload.wall,end=payload.end,orig=(end==='a'?w.a:w.b).slice();dragInfo.orig=orig;dragInfo.group=joinGroupAt(w,orig)}
+else if(kind==='body'){dragInfo.snap=snapshotFor(sel);
+if(sel.k==='w'){const w=wallOf(sel.id);dragInfo.origA=w.a.slice();dragInfo.origB=w.b.slice();dragInfo.origCurve=w.curve?w.curve.slice():null;dragInfo.groupA=joinGroupAt(w,w.a);dragInfo.groupB=joinGroupAt(w,w.b)}}}
+function updateDrag(p){const cur=[snap(p[0]),snap(p[1])];
+if(dragInfo.kind==='endpoint'){const{wall,end}=dragInfo.payload;wall[end]=cur;for(const g of dragInfo.group)g.w[g.end]=cur.slice()}
+else if(dragInfo.kind==='body'){const delta=[cur[0]-dragInfo.startSnap[0],cur[1]-dragInfo.startSnap[1]];applyBodyDelta(delta)}
+else if(dragInfo.kind==='op'){const o=S.ops.find(o=>o.id===sel.id),w=dragInfo.payload.wall,q=proj(p,w),Ln=len(w);o.d=Math.max(o.w/2,Math.min(Ln-o.w/2,q.d))}
+draw()}
+function applyBodyDelta(delta){
+if(sel.k==='w'){const w=wallOf(sel.id);w.a=[dragInfo.origA[0]+delta[0],dragInfo.origA[1]+delta[1]];w.b=[dragInfo.origB[0]+delta[0],dragInfo.origB[1]+delta[1]];
+if(dragInfo.origCurve)w.curve=[dragInfo.origCurve[0]+delta[0],dragInfo.origCurve[1]+delta[1]];
+for(const g of dragInfo.groupA)g.w[g.end]=[dragInfo.origA[0]+delta[0],dragInfo.origA[1]+delta[1]];
+for(const g of dragInfo.groupB)g.w[g.end]=[dragInfo.origB[0]+delta[0],dragInfo.origB[1]+delta[1]]}
+else if(sel.k==='c'){const c=S.cols.find(c=>c.id===sel.id);c.pos=[dragInfo.snap.pos[0]+delta[0],dragInfo.snap.pos[1]+delta[1]]}
+else if(sel.k==='n'){const n=S.notes.find(n=>n.id===sel.id);n.pos=[dragInfo.snap.pos[0]+delta[0],dragInfo.snap.pos[1]+delta[1]]}
+else if(sel.k==='st'){const x=S.stairs.find(x=>x.id===sel.id);x.a=[dragInfo.snap.a[0]+delta[0],dragInfo.snap.a[1]+delta[1]];x.b=[dragInfo.snap.b[0]+delta[0],dragInfo.snap.b[1]+delta[1]]}
+else if(sel.k==='vd'){const x=S.voids.find(x=>x.id===sel.id);x.a=[dragInfo.snap.a[0]+delta[0],dragInfo.snap.a[1]+delta[1]];x.b=[dragInfo.snap.b[0]+delta[0],dragInfo.snap.b[1]+delta[1]]}
+else if(sel.k==='s'){const x=S.slabs.find(x=>x.id===sel.id);x.a=[dragInfo.snap.a[0]+delta[0],dragInfo.snap.a[1]+delta[1]];x.b=[dragInfo.snap.b[0]+delta[0],dragInfo.snap.b[1]+delta[1]]}
+else if(sel.k==='d'){const x=S.dims.find(x=>x.id===sel.id);x.a=[dragInfo.snap.a[0]+delta[0],dragInfo.snap.a[1]+delta[1]];x.b=[dragInfo.snap.b[0]+delta[0],dragInfo.snap.b[1]+delta[1]]}}
+function endDrag(){if(dragInfo){dragInfo=null;commit()}}
+cv.addEventListener('pointerup',endDrag);addEventListener('pointerup',endDrag);
+addEventListener('keydown',e=>{if(e.key==='Escape'){start=null;cpts=[];draw()}if((e.key==='Delete'||e.key==='Backspace')&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName))del()});
+cv.addEventListener('contextmenu',e=>{e.preventDefault();start=null;cpts=[];draw()});
+function del(){if(!sel)return;if(sel.k==='s')S.slabs=S.slabs.filter(s=>s.id!==sel.id);else if(sel.k==='c')S.cols=S.cols.filter(c=>c.id!==sel.id);else if(sel.k==='d')S.dims=S.dims.filter(d=>d.id!==sel.id);else if(sel.k==='n')S.notes=S.notes.filter(nt=>nt.id!==sel.id);else if(sel.k==='st')S.stairs=S.stairs.filter(s=>s.id!==sel.id);else if(sel.k==='vd')S.voids=S.voids.filter(v=>v.id!==sel.id);else if(sel.k==='w'){S.walls=S.walls.filter(w=>w.id!==sel.id);S.ops=S.ops.filter(o=>o.wall!==sel.id)}else S.ops=S.ops.filter(o=>o.id!==sel.id);sel=null;commit()}
+$('del').onclick=del;$('clear').onclick=()=>{S.walls=S.walls.filter(w=>w.levelId!==S.cur);const rem=new Set(S.walls.map(w=>w.id));S.ops=S.ops.filter(o=>rem.has(o.wall));S.slabs=S.slabs.filter(s=>s.levelId!==S.cur);S.cols=S.cols.filter(c=>c.levelId!==S.cur);S.dims=S.dims.filter(d=>d.levelId!==S.cur);S.notes=S.notes.filter(nt=>nt.levelId!==S.cur);S.stairs=S.stairs.filter(s=>s.levelId!==S.cur);S.voids=S.voids.filter(v=>v.levelId!==S.cur);sel=null;start=null;cpts=[];commit()};
+document.querySelectorAll('#tools [data-t]').forEach(b=>b.onclick=()=>{tool=b.dataset.t;start=null;cpts=[];document.querySelectorAll('#tools [data-t]').forEach(x=>x.classList.toggle('on',x===b));hint();renderFamSel();draw()});
+function hint(){$('hint').textContent={wall:'Klik untuk mulai dinding, klik lagi untuk titik berikutnya. Klik kanan / Esc untuk berhenti.',curvewall:'Klik titik awal, klik titik akhir, lalu klik titik ke-3 tempat lengkungan harus melewati.',door:'Klik dekat dinding lurus untuk menaruh pintu.',window:'Klik dekat dinding lurus untuk menaruh jendela.',column:'Klik untuk menaruh kolom.',floor:'Klik dua sudut untuk membuat lantai (persegi panjang).',roof:'Klik dua sudut untuk membuat atap. Naik = 0 berarti atap datar.',ceiling:'Klik dua sudut untuk membuat plafon (persegi panjang) pada level ini.',void:'Klik dua sudut untuk membuat void/bukaan pada lantai atau atap datar di level ini.',stair:'Klik titik awal (bawah) lalu titik akhir (atas) tangga. Jumlah anak tangga dihitung otomatis dari tinggi level.',dim:'Klik dua titik untuk membuat garis dimensi (jarak).',text:'Klik untuk menaruh teks keterangan, lalu edit isinya di panel properti.',section:'Klik dua titik untuk menentukan garis potongan bangunan.',select:'Klik elemen untuk memilih. Klik-tahan-geser elemen yang sudah terpilih untuk memindahkannya (dinding: tarik lingkaran di ujung untuk mengubah panjang/arah, atau tarik badan dinding untuk menggeser semuanya).'}[tool]}
+function propsHeader(k){return{w:'Dinding',o:'Bukaan',s:'Elemen',c:'Kolom',st:'Tangga',vd:'Void lantai'}[k]}
+function ensureInfo(it){if(!it.info)it.info={name:'',material:'',notes:'',custom:[]};return it.info}
+function buildInfoBox(it,header){
+ensureInfo(it);
+const pb=document.createElement('div');pb.className='propbox';
+const r1=document.createElement('div');r1.className='row';
+const l1=document.createElement('label');l1.textContent='Nama';const n1=document.createElement('input');n1.type='text';n1.value=it.info.name;n1.placeholder=header;n1.onchange=()=>{it.info.name=n1.value;save();elist()};
+const l2=document.createElement('label');l2.textContent='Material';const n2=document.createElement('input');n2.type='text';n2.value=it.info.material;n2.placeholder='mis. Beton, Bata';n2.onchange=()=>{it.info.material=n2.value;save();elist()};
+r1.append(l1,n1,l2,n2);pb.appendChild(r1);
+const r2=document.createElement('div');r2.className='row';
+const l3=document.createElement('label');l3.textContent='Catatan';const n3=document.createElement('textarea');n3.value=it.info.notes;n3.style.width='100%';n3.onchange=()=>{it.info.notes=n3.value;save()};
+r2.append(l3);pb.appendChild(r2);pb.appendChild(n3);
+const cwrap=document.createElement('div');cwrap.style.marginTop='6px';
+function renderCustom(){cwrap.innerHTML='<label>Properti kustom</label>';
+it.info.custom.forEach((c,idx)=>{const cr=document.createElement('div');cr.className='custrow';
+const ki=document.createElement('input');ki.type='text';ki.placeholder='Nama properti';ki.value=c.k;ki.onchange=()=>{c.k=ki.value;save()};
+const vi=document.createElement('input');vi.type='text';vi.placeholder='Nilai';vi.value=c.v;vi.onchange=()=>{c.v=vi.value;save();elist()};
+const rm=document.createElement('button');rm.className='sm';rm.textContent='x';rm.onclick=()=>{it.info.custom.splice(idx,1);save();renderCustom();elist()};
+cr.append(ki,vi,rm);cwrap.appendChild(cr)});
+const ab=document.createElement('button');ab.className='sm';ab.textContent='+ Tambah properti';ab.onclick=()=>{it.info.custom.push({k:'',v:''});renderCustom()};
+cwrap.appendChild(ab)}
+renderCustom();pb.appendChild(cwrap);
+return pb}
+function props(){const el=$('props');el.innerHTML='';if(!sel)return;
+if(sel.k==='n'){const nt=S.notes.find(n=>n.id===sel.id);if(!nt)return;
+const lb=document.createElement('label');lb.textContent='Teks keterangan';const ta=document.createElement('textarea');ta.style.width='100%';ta.value=nt.text;
+ta.onchange=()=>{nt.text=ta.value||'Keterangan';save();draw()};el.append(lb,ta);return}
+if(sel.k==='d'){const d=S.dims.find(x=>x.id===sel.id);if(!d)return;const Ln=Math.hypot(d.b[0]-d.a[0],d.b[1]-d.a[1]);
+const wrap=document.createElement('div');wrap.className='row';wrap.innerHTML='<label>Jarak</label><b>'+Ln.toFixed(2)+' m</b>';
+const lb=document.createElement('label');lb.textContent='Offset garis';const oi=document.createElement('input');oi.type='number';oi.step='0.05';oi.value=d.off;oi.onchange=()=>{d.off=+oi.value;save();draw()};
+wrap.append(lb,oi);el.appendChild(wrap);return}
+let it,fields;
+if(sel.k==='w'){it=wallOf(sel.id);fields=[['h','Tinggi'],['t','Tebal']]}
+else if(sel.k==='s'){it=S.slabs.find(s=>s.id===sel.id);fields=it&&it.kind==='roof'?[['t','Tebal'],['elev','Elev dari lantai'],['rise','Naik'],['over','Overhang']]:it&&it.kind==='ceiling'?[['t','Tebal'],['elev','Tinggi plafon dari lantai']]:[['t','Tebal'],['elev','Elev dari lantai']]}
+else if(sel.k==='c'){it=S.cols.find(c=>c.id===sel.id);fields=[['w','Lebar'],['d','Kedalaman'],['h','Tinggi'],['elev','Elev dari lantai']]}
+else if(sel.k==='o'){it=S.ops.find(o=>o.id===sel.id);fields=[['w','Lebar'],['h','Tinggi'],['sill','Ambang'],['d','Posisi']]}
+else if(sel.k==='st'){it=S.stairs.find(s=>s.id===sel.id);fields=[['w','Lebar']]}
+else if(sel.k==='vd'){it=S.voids.find(v=>v.id===sel.id);fields=[]}
+if(!it)return;
+if((sel.k==='w'||sel.k==='s')&&it.layers&&it.layers.length)fields=fields.filter(([k])=>k!=='t');
+const wrap=document.createElement('div');wrap.className='row';
+for(const[k,l]of fields){const lb=document.createElement('label');lb.textContent=l;const i=document.createElement('input');i.type='number';i.step='0.05';i.value=+it[k].toFixed(2);
+i.onchange=()=>{it[k]=Math.max(0,+i.value);commit(true)};wrap.append(lb,i)}
+el.appendChild(wrap);
+if((sel.k==='w'||sel.k==='s')&&it.layers&&it.layers.length){const tn=document.createElement('p');tn.style.cssText='color:var(--mut);font-size:12px;margin:2px 0 0';tn.textContent='Tebal total (dari lapisan): '+sumLayers(it.layers).toFixed(3)+' m';el.appendChild(tn)}
+if(sel.k==='w'){const gr=document.createElement('label');gr.className='row';gr.style.gap='4px';const gc=document.createElement('input');gc.type='checkbox';gc.checked=!!it.glass;gc.onchange=()=>{it.glass=gc.checked;commit(true)};gr.append(gc,document.createTextNode(' Curtain wall (kaca)'));el.appendChild(gr);
+const jr=document.createElement('label');jr.className='row';jr.style.gap='4px';const jc=document.createElement('input');jc.type='checkbox';jc.checked=it.joined!==false;jc.onchange=()=>{it.joined=jc.checked;save()};jr.append(jc,document.createTextNode(' Kunci sambungan ujung dinding (ikut tergeser bila dinding lain digeser)'));el.appendChild(jr);
+if(it.curve){const nn=document.createElement('p');nn.style.cssText='color:var(--mut);font-size:12px;margin:4px 0 0';nn.textContent='Dinding kurva — tidak mendukung pintu/jendela.';el.appendChild(nn)}}
+if(sel.k==='st'){const info=stairSteps(it);const sp=document.createElement('div');sp.className='row';sp.innerHTML=`<label>Anak tangga</label><b>${info.n} (tinggi ${info.riser.toFixed(3)} m, injakan ${info.run.toFixed(3)} m)</b>`;el.appendChild(sp)}
+if(sel.k==='vd'){const r=rect(it);const sp=document.createElement('div');sp.className='row';sp.innerHTML=`<label>Luas void</label><b>${((r[2]-r[0])*(r[3]-r[1])).toFixed(2)} m²</b>`;el.appendChild(sp)}
+el.appendChild(buildInfoBox(it,propsHeader(sel.k)));
+if(sel.k==='w'&&!it.glass)renderLayerEditor(it,el,'Lapisan disusun melintasi ketebalan dinding (dari sisi A ke sisi B).');
+if(sel.k==='s')renderLayerEditor(it,el,'Lapisan disusun dari permukaan atas/luar ke bawah/dalam.')}
+function renderLayerEditor(it,container,axisNote){
+const wrap=document.createElement('div');wrap.className='propbox';
+const hdr=document.createElement('label');hdr.className='row';hdr.style.gap='4px';
+const chk=document.createElement('input');chk.type='checkbox';chk.checked=!!(it.layers&&it.layers.length);
+chk.onchange=()=>{if(chk.checked)it.layers=[{name:'Lapisan 1',material:(it.info&&it.info.material)||'',t:it.t||.1}];else it.layers=null;save();draw();build();sched();elist();props()};
+hdr.append(chk,document.createTextNode(' Gunakan lapisan konstruksi berlapis'));wrap.appendChild(hdr);
+if(axisNote){const nn=document.createElement('p');nn.style.cssText='color:var(--mut);font-size:11px;margin:2px 0 6px';nn.textContent=axisNote;wrap.appendChild(nn)}
+if(it.layers&&it.layers.length){const tbl=document.createElement('div');
+it.layers.forEach((ly,idx)=>{const row=document.createElement('div');row.className='custrow';
+const ni=document.createElement('input');ni.type='text';ni.placeholder='Nama lapisan';ni.value=ly.name||'';ni.style.flex='1.2';ni.onchange=()=>{ly.name=ni.value;save()};
+const mi=document.createElement('input');mi.type='text';mi.placeholder='Material';mi.value=ly.material||'';mi.onchange=()=>{ly.material=mi.value;save();elist()};
+const ti=document.createElement('input');ti.type='number';ti.step='0.005';ti.min='0.001';ti.value=ly.t;ti.style.width='64px';
+ti.onchange=()=>{ly.t=Math.max(.001,+ti.value);it.t=sumLayers(it.layers);save();draw();build();sched();elist();props()};
+const up=document.createElement('button');up.className='sm';up.textContent='↑';up.disabled=idx===0;up.onclick=()=>{[it.layers[idx-1],it.layers[idx]]=[it.layers[idx],it.layers[idx-1]];save();draw();build();props()};
+const dn=document.createElement('button');dn.className='sm';dn.textContent='↓';dn.disabled=idx===it.layers.length-1;dn.onclick=()=>{[it.layers[idx+1],it.layers[idx]]=[it.layers[idx],it.layers[idx+1]];save();draw();build();props()};
+const rm=document.createElement('button');rm.className='sm';rm.textContent='x';rm.onclick=()=>{it.layers.splice(idx,1);if(!it.layers.length)it.layers=null;else it.t=sumLayers(it.layers);save();draw();build();sched();elist();props()};
+row.append(ni,mi,ti,up,dn,rm);tbl.appendChild(row)});
+const ab=document.createElement('button');ab.className='sm';ab.textContent='+ Tambah lapisan';ab.onclick=()=>{it.layers.push({name:'Lapisan '+(it.layers.length+1),material:'',t:.05});it.t=sumLayers(it.layers);save();draw();build();sched();elist();props()};
+tbl.appendChild(ab);wrap.appendChild(tbl);
+const tot=document.createElement('p');tot.style.cssText='color:var(--mut);font-size:12px;margin:6px 0 0';tot.textContent='Tebal total: '+sumLayers(it.layers).toFixed(3)+' m (otomatis dari lapisan)';wrap.appendChild(tot)}
+container.appendChild(wrap)}
+function elist(){const el=$('elist');
+const rows=[];
+for(const w of S.walls){const lv=S.levels.find(l=>l.id===w.levelId);rows.push([lv?lv.name:'?',(w.curve?'Dinding kurva':'Dinding')+(w.glass?' (kaca)':''),w.info&&w.info.name||'-',w.info&&w.info.material||'-'])}
+for(const o of S.ops){const lv=S.levels.find(l=>l.id===o.levelId);rows.push([lv?lv.name:'?',o.type==='door'?'Pintu':'Jendela',o.info&&o.info.name||'-',o.info&&o.info.material||'-'])}
+for(const s of S.slabs){const lv=S.levels.find(l=>l.id===s.levelId);rows.push([lv?lv.name:'?',s.kind==='roof'?'Atap':s.kind==='ceiling'?'Plafon':'Lantai',s.info&&s.info.name||'-',s.info&&s.info.material||'-'])}
+for(const c of S.cols){const lv=S.levels.find(l=>l.id===c.levelId);rows.push([lv?lv.name:'?','Kolom',c.info&&c.info.name||'-',c.info&&c.info.material||'-'])}
+for(const st of S.stairs){const lv=S.levels.find(l=>l.id===st.levelId);rows.push([lv?lv.name:'?','Tangga',st.info&&st.info.name||'-',st.info&&st.info.material||'-'])}
+for(const vd of S.voids){const lv=S.levels.find(l=>l.id===vd.levelId);rows.push([lv?lv.name:'?','Void lantai',vd.info&&vd.info.name||'-',vd.info&&vd.info.material||'-'])}
+if(!rows.length){el.innerHTML='<p style="color:var(--mut);font-size:12px">Belum ada elemen.</p>';return}
+el.innerHTML='<table><tr><th>Level</th><th>Jenis</th><th>Nama</th><th>Material</th></tr>'+rows.map(r=>'<tr><td>'+r.join('</td><td>')+'</td></tr>').join('')+'</table>'}
+// ---------- family / tipe kustom ----------
+function famKindForTool(t){return{wall:'wall',curvewall:'wall',stair:'stair',column:'col',door:'door',window:'window',floor:'floor',roof:'roof',ceiling:'ceiling'}[t]||null}
+function famKind(sel,it){if(sel.k==='w')return'wall';if(sel.k==='st')return'stair';if(sel.k==='c')return'col';if(sel.k==='o')return it.type;if(sel.k==='s')return it.kind;return null}
+function selItem(sel){if(sel.k==='w')return wallOf(sel.id);if(sel.k==='s')return S.slabs.find(s=>s.id===sel.id);if(sel.k==='c')return S.cols.find(c=>c.id===sel.id);if(sel.k==='o')return S.ops.find(o=>o.id===sel.id);if(sel.k==='st')return S.stairs.find(s=>s.id===sel.id);return null}
+const cloneLayers=l=>l?JSON.parse(JSON.stringify(l)):null;
+function extractAttrs(kind,it){switch(kind){
+case'wall':return{h:it.h,t:it.t,glass:!!it.glass,layers:cloneLayers(it.layers)};
+case'stair':return{w:it.w};
+case'col':return{w:it.w,d:it.d,h:it.h};
+case'door':case'window':return{w:it.w,h:it.h,sill:it.sill};
+case'floor':return{t:it.t,layers:cloneLayers(it.layers)};
+case'roof':return{t:it.t,rise:it.rise,over:it.over,layers:cloneLayers(it.layers)};
+case'ceiling':return{t:it.t,elev:it.elev,layers:cloneLayers(it.layers)};
+default:return{}}}
+function curFamily(kind){const s=$('famSel');if(!s||!s.value)return null;const fam=S.families.find(f=>f.id==+s.value);return(fam&&fam.kind===kind)?fam:null}
+function applyFamilyAttrs(kind,obj){const fam=curFamily(kind);if(fam){const a=Object.assign({},fam.attrs);if(a.layers)a.layers=cloneLayers(a.layers);Object.assign(obj,a)}}
+function renderFamSel(){const s=$('famSel');if(!s)return;const kind=famKindForTool(tool),cur=s.value;
+s.innerHTML='<option value="">(tidak ada)</option>'+S.families.filter(f=>f.kind===kind).map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
+s.disabled=!kind;if([...s.options].some(o=>o.value===cur))s.value=cur}
+function renderFamilies(){const el=$('famList');if(!el)return;el.innerHTML='';
+if(!S.families.length){el.innerHTML='<p style="color:var(--mut);font-size:12px">Belum ada tipe tersimpan.</p>'}
+else{const tbl=document.createElement('table');tbl.innerHTML='<tr><th>Nama</th><th>Jenis</th><th></th></tr>';
+S.families.forEach(f=>{const tr=document.createElement('tr');
+const td1=document.createElement('td');td1.textContent=f.name;
+const td2=document.createElement('td');td2.textContent=f.kind;
+const td3=document.createElement('td');const rm=document.createElement('button');rm.className='sm';rm.textContent='Hapus';rm.onclick=()=>{S.families=S.families.filter(x=>x.id!==f.id);save();renderFamilies()};td3.appendChild(rm);
+tr.append(td1,td2,td3);tbl.appendChild(tr)});
+el.appendChild(tbl)}
+renderFamSel()}
+$('famSave').onclick=()=>{if(!sel){alert('Pilih elemen dulu di denah (mode Pilih).');return}
+const it=selItem(sel);if(!it){alert('Elemen ini tidak mendukung tipe/family.');return}
+const kind=famKind(sel,it);if(!kind){alert('Elemen ini tidak mendukung tipe/family.');return}
+const name=prompt('Nama tipe/family:',(it.info&&it.info.name)||kind);if(!name)return;
+S.families.push({id:S.id++,name,kind,attrs:extractAttrs(kind,it)});save();renderFamilies()};
+// ---------- 3D ----------
+const v3=$('v3'),ren=new THREE.WebGLRenderer({antialias:true,alpha:true});ren.localClippingEnabled=true;v3.appendChild(ren.domElement);
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,1,.1,500),ocam=new THREE.OrthographicCamera(-10,10,10,-10,.1,500),grp=new THREE.Group();scene.add(grp);
+scene.add(new THREE.HemisphereLight(0xffffff,0x888888,.75));const dl=new THREE.DirectionalLight(0xffffff,.7);dl.position.set(10,20,8);scene.add(dl);
+const gridH=new THREE.GridHelper(40,40,0x999999,0xcccccc);scene.add(gridH);
+let az=.8,el=.5,dist=26,orthoZoom=1,viewMode='3d';const tgt=new THREE.Vector3(6,2,5);
+let BB={x0:0,x1:10,z0:0,z1:8,ytop:6};
+function render3(){
+gridH.visible=viewMode==='3d';
+if(viewMode==='3d'){ren.clippingPlanes=[];cam.position.set(tgt.x+dist*Math.cos(el)*Math.sin(az),tgt.y+dist*Math.sin(el),tgt.z+dist*Math.cos(el)*Math.cos(az));cam.lookAt(tgt);ren.render(scene,cam);return}
+const w=v3.clientWidth||1,h=360,aspect=w/h,cx0=(BB.x0+BB.x1)/2,cz0=(BB.z0+BB.z1)/2,cy0=Math.max(BB.ytop,2)/2;
+let dir,lookX=cx0,lookZ=cz0;
+if(viewMode==='front')dir=[0,0,1];else if(viewMode==='back')dir=[0,0,-1];else if(viewMode==='left')dir=[-1,0,0];else if(viewMode==='right')dir=[1,0,0];
+if(viewMode==='section'){
+if(!S.section){$('viewMsg').textContent='Gunakan tool "Garis potongan" pada denah untuk menentukan garis potongan terlebih dahulu.';ren.clippingPlanes=[];ren.render(scene,ocam);return}
+$('viewMsg').textContent='Menampilkan potongan sesuai garis ungu pada denah. Klik "Balik arah potongan" untuk melihat dari sisi lain.';
+const{a,b,flip}=S.section,dx=b[0]-a[0],dy=b[1]-a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln;let nx=uy,ny=-ux;if(flip){nx=-nx;ny=-ny}
+lookX=(a[0]+b[0])/2;lookZ=(a[1]+b[1])/2;dir=[nx,0,ny];
+const plane=new THREE.Plane();plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(-nx,0,-ny),new THREE.Vector3(a[0],0,a[1]));
+ren.clippingPlanes=[plane];
+}else{$('viewMsg').textContent='';ren.clippingPlanes=[]}
+const size=Math.max(BB.x1-BB.x0,BB.z1-BB.z0,BB.ytop,4)*1.4*orthoZoom;
+ocam.left=-size*aspect/2;ocam.right=size*aspect/2;ocam.top=size/2;ocam.bottom=-size/2;ocam.near=.1;ocam.far=500;ocam.updateProjectionMatrix();
+ocam.position.set(lookX+dir[0]*60,cy0,lookZ+dir[2]*60);ocam.up.set(0,1,0);ocam.lookAt(lookX,cy0,lookZ);
+ren.render(scene,ocam)}
+function cam3(){render3()}
+function size3(){const w=v3.clientWidth,h=360;ren.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix();render3()}
+let drag=null;v3.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY]});addEventListener('pointerup',()=>drag=null);
+addEventListener('pointermove',e=>{if(!drag||viewMode!=='3d')return;az-=(e.clientX-drag[0])*.008;el=Math.max(.05,Math.min(1.5,el+(e.clientY-drag[1])*.008));drag=[e.clientX,e.clientY];render3()});
+v3.addEventListener('wheel',e=>{e.preventDefault();if(viewMode==='3d')dist=Math.max(4,Math.min(100,dist*(1+e.deltaY*.001)));else orthoZoom=Math.max(.2,Math.min(5,orthoZoom*(1+e.deltaY*.001)));render3()},{passive:false});
+document.querySelectorAll('#viewTools [data-v]').forEach(b=>b.onclick=()=>{viewMode=b.dataset.v;document.querySelectorAll('#viewTools [data-v]').forEach(x=>x.classList.toggle('on',x===b));render3()});
+$('flipSec').onclick=()=>{if(!S.section)return;S.section.flip=!S.section.flip;save();draw();render3()};
+const mat=(c,o)=>new THREE.MeshLambertMaterial(Object.assign({color:c},o||{}));
+function build(){while(grp.children.length)grp.remove(grp.children[0]);
+const mw=mat(0xd9d4c7),md=mat(0x8a5a2b),mg=mat(0x6cb4ee,{transparent:true,opacity:.45});let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+function layeredBox(w,dx,dy,dz,layers,cx0,cy0,cz0,axis){
+if(!layers||!layers.length){const b=new THREE.Mesh(new THREE.BoxGeometry(dx,dy,dz),w);b.position.set(cx0,cy0,cz0);return[b]}
+const out=[];
+if(axis==='z'){let cur=-dz/2;layers.forEach((ly,li)=>{const th=ly.t,m=mat(layerColor(ly.material,li));
+const b=new THREE.Mesh(new THREE.BoxGeometry(dx,dy,th),m);b.position.set(cx0,cy0,cz0+cur+th/2);out.push(b);cur+=th})}
+else{let cur=dy/2;layers.forEach((ly,li)=>{const th=ly.t,m=mat(layerColor(ly.material,li));
+const b=new THREE.Mesh(new THREE.BoxGeometry(dx,th,dz),m);b.position.set(cx0,cy0+cur-th/2,cz0);out.push(b);cur-=th})}
+return out}
+for(const w of S.walls){const by=levelElev(w.levelId);
+if(w.curve){const pts=arcPoints(w.a,w.curve,w.b,16),wm=w.glass?mg:mw,useLayers=!w.glass?w.layers:null;
+for(let i=0;i<pts.length-1;i++){const a2=pts[i],b2=pts[i+1],Ln2=Math.hypot(b2[0]-a2[0],b2[1]-a2[1]);if(Ln2<.001)continue;
+const ang=-Math.atan2(b2[1]-a2[1],b2[0]-a2[0]),ccx=(a2[0]+b2[0])/2,ccz=(a2[1]+b2[1])/2;
+for(const bx of layeredBox(wm,Ln2,w.h,w.t,useLayers,0,by+w.h/2,0,'z')){bx.rotation.y=ang;bx.position.x+=ccx;bx.position.z+=ccz;grp.add(bx)}
+mnx=Math.min(mnx,a2[0],b2[0]);mxx=Math.max(mxx,a2[0],b2[0]);mny=Math.min(mny,a2[1],b2[1]);mxy=Math.max(mxy,a2[1],b2[1])}
+continue}
+const L=len(w),g=new THREE.Group();g.position.set(w.a[0],by,w.a[1]);g.rotation.y=-Math.atan2(w.b[1]-w.a[1],w.b[0]-w.a[0]);
+const wm=w.glass?mg:mw,useLayers=!w.glass?w.layers:null;
+const ops=S.ops.filter(o=>o.wall===w.id).map(o=>({o,x0:Math.max(0,o.d-o.w/2),x1:Math.min(L,o.d+o.w/2)})).sort((a,b)=>a.x0-b.x0);
+const add=(x0,x1,y0,y1,m)=>{if(x1-x0<.001||y1-y0<.001)return;const b=new THREE.Mesh(new THREE.BoxGeometry(x1-x0,y1-y0,w.t),m);b.position.set((x0+x1)/2,(y0+y1)/2,0);g.add(b)};
+const addSolid=(x0,x1,y0,y1)=>{if(x1-x0<.001||y1-y0<.001)return;for(const b of layeredBox(wm,x1-x0,y1-y0,w.t,useLayers,(x0+x1)/2,(y0+y1)/2,0,'z'))g.add(b)};
+let cur=0;for(const p of ops){addSolid(cur,p.x0,0,w.h);const y1=Math.min(w.h,p.o.sill+p.o.h);addSolid(p.x0,p.x1,0,p.o.sill);addSolid(p.x0,p.x1,y1,w.h);
+if(p.o.type==='window')add(p.x0,p.x1,p.o.sill,y1,mg);else add(p.x0,p.x1,p.o.sill,y1,md);
+if(p.o.type==='door'){g.children[g.children.length-1].scale.z=.25}else g.children[g.children.length-1].scale.z=.1;cur=Math.max(cur,p.x1)}
+addSolid(cur,L,0,w.h);grp.add(g);
+for(const q of[w.a,w.b]){mnx=Math.min(mnx,q[0]);mny=Math.min(mny,q[1]);mxx=Math.max(mxx,q[0]);mxy=Math.max(mxy,q[1])}}
+for(const s of S.slabs){const by=levelElev(s.levelId),r=rect(s),isRoof=s.kind==='roof',isCeil=s.kind==='ceiling',o=isRoof?s.over:0,x0=r[0]-o,x1=r[2]+o,z0=r[1]-o,z1=r[3]+o,W=x1-x0,D=z1-z0;
+if(isRoof&&s.rise>0){const ax=W>=D,B=ax?D:W,Ln=ax?W:D,sh=new THREE.Shape();sh.moveTo(-B/2,0);sh.lineTo(B/2,0);sh.lineTo(0,s.rise);sh.closePath();
+const g=new THREE.ExtrudeGeometry(sh,{depth:Ln,bevelEnabled:false});g.translate(0,0,-Ln/2);const m=new THREE.Mesh(g,mat(0xa8442f));m.position.set((x0+x1)/2,by+s.elev,(z0+z1)/2);if(ax)m.rotation.y=Math.PI/2;grp.add(m)}
+else{const pieces=slabPiecesMinusVoids([x0,z0,x1,z1],s.levelId),baseCol=isRoof?0xa8442f:isCeil?0xe4dfce:0xb8b2a4,topY=s.kind==='floor'?by+s.elev:by+s.elev+s.t;
+for(const pc of pieces){const[px0,pz0,px1,pz1]=pc,pw=px1-px0,pd=pz1-pz0;if(pw<.01||pd<.01)continue;
+if(s.layers&&s.layers.length){for(const b of layeredBox(null,pw,s.t,pd,s.layers,(px0+px1)/2,topY-s.t/2,(pz0+pz1)/2,'y'))grp.add(b)}
+else{const b=new THREE.Mesh(new THREE.BoxGeometry(pw,s.t,pd),mat(baseCol));b.position.set((px0+px1)/2,topY-s.t/2,(pz0+pz1)/2);grp.add(b)}}}}
+const mc=mat(0x6b5a3e);
+for(const c of S.cols){const by=levelElev(c.levelId);const b=new THREE.Mesh(new THREE.BoxGeometry(c.w,c.h,c.d),mc);b.position.set(c.pos[0],by+c.elev+c.h/2,c.pos[1]);grp.add(b);
+mnx=Math.min(mnx,c.pos[0]-c.w/2);mxx=Math.max(mxx,c.pos[0]+c.w/2);mny=Math.min(mny,c.pos[1]-c.d/2);mxy=Math.max(mxy,c.pos[1]+c.d/2)}
+const ms=mat(0x9c8f73);
+for(const st of S.stairs){const by=levelElev(st.levelId),{n,riser,run}=stairSteps(st),dx=st.b[0]-st.a[0],dy=st.b[1]-st.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,ang=-Math.atan2(dy,dx);
+for(let i=0;i<n;i++){const h=(i+1)*riser,x0=i*run,x1=(i+1)*run,cxp=st.a[0]+ux*(x0+x1)/2,czp=st.a[1]+uy*(x0+x1)/2;
+const g=new THREE.Mesh(new THREE.BoxGeometry(x1-x0,h,st.w),ms);g.position.set(cxp,by+h/2,czp);g.rotation.y=ang;grp.add(g)}
+mnx=Math.min(mnx,st.a[0],st.b[0])-st.w;mxx=Math.max(mxx,st.a[0],st.b[0])+st.w;mny=Math.min(mny,st.a[1],st.b[1])-st.w;mxy=Math.max(mxy,st.a[1],st.b[1])+st.w}
+for(const s of S.slabs){const r=rect(s);mnx=Math.min(mnx,r[0]);mxx=Math.max(mxx,r[2]);mny=Math.min(mny,r[1]);mxy=Math.max(mxy,r[3])}
+if(S.walls.length||S.cols.length||S.slabs.length||S.stairs.length){const f=new THREE.Mesh(new THREE.BoxGeometry(mxx-mnx+.4,.2,mxy-mny+.4),mat(0xb8b2a4));f.position.set((mnx+mxx)/2,-.1,(mny+mxy)/2);grp.add(f);tgt.set((mnx+mxx)/2,1.6,(mny+mxy)/2);
+BB={x0:mnx,x1:mxx,z0:mny,z1:mxy,ytop:S.levels.reduce((a,l)=>a+l.height,0)}}
+render3()}
+// ---------- schedule ----------
+function sched(){let L=0,A=0,V=0,glassA=0;for(const w of S.walls){const l=len(w);L+=l;A+=l*w.h;V+=l*w.h*w.t;if(w.glass)glassA+=l*w.h}
+let oa=0;for(const o of S.ops)oa+=o.w*o.h;const nd=S.ops.filter(o=>o.type==='door').length,nw=S.ops.length-nd;
+let fa=0,ra=0,cla=0;for(const s of S.slabs){const q=rect(s),o=s.kind==='roof'?s.over:0,W=q[2]-q[0]+2*o,D=q[3]-q[1]+2*o,a=W*D;if(s.kind==='floor')fa+=a;else if(s.kind==='ceiling')cla+=a;else{const B=Math.min(W,D);ra+=s.rise>0?a*Math.sqrt(1+Math.pow(2*s.rise/B,2)):a}}
+let voidArea=0;for(const vd of S.voids){const r=rect(vd);voidArea+=(r[2]-r[0])*(r[3]-r[1])}
+const r=(a,b,c)=>`<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`;
+let cv2=0;for(const c of S.cols)cv2+=c.w*c.d*c.h;
+$('sched').innerHTML='<table><tr><th>Item</th><th>Jumlah</th><th>Satuan</th></tr>'+r('Jumlah lantai/level',S.levels.length,'level')+r('Tinggi total bangunan',S.levels.reduce((a,l)=>a+l.height,0).toFixed(2),'m')+r('Dinding',S.walls.length,'buah')+r('Panjang total dinding',L.toFixed(2),'m')+r('Luas dinding (bruto)',A.toFixed(2),'m²')+r('Luas dinding (neto, minus bukaan)',(A-oa).toFixed(2),'m²')+r('Luas curtain wall (kaca)',glassA.toFixed(2),'m²')+r('Pintu',nd,'buah')+r('Jendela',nw,'buah')+r('Kolom',S.cols.length,'buah')+r('Volume kolom',cv2.toFixed(2),'m³')+r('Tangga',S.stairs.length,'buah')+r('Luas lantai',fa.toFixed(2),'m²')+r('Luas atap (permukaan)',ra.toFixed(2),'m²')+r('Luas plafon',cla.toFixed(2),'m²')+r('Luas void lantai',voidArea.toFixed(2),'m²')+r('Tipe/family tersimpan',S.families.length,'tipe')+'</table>'}
+function commit(keep){save();renderLevels();if(!keep)props();draw();build();sched();elist();renderFamSel()}
+$('exp').onclick=()=>{$('json').value=JSON.stringify(S,null,1);$('jsons').textContent='Data model disalin ke kotak di atas.'};
+$('imp').onclick=()=>{try{const d=JSON.parse($('json').value);S.walls=d.walls||[];S.ops=d.ops||[];S.slabs=d.slabs||[];S.cols=d.cols||[];S.dims=d.dims||[];S.notes=d.notes||[];S.stairs=d.stairs||[];S.voids=d.voids||[];S.families=d.families||[];S.section=d.section||null;S.levels=d.levels;S.cur=d.cur;S.id=d.id||100;migrate();sel=null;commit();renderFamilies();$('jsons').textContent='Data berhasil dimuat.'}catch(e){$('jsons').textContent='JSON tidak valid — periksa kembali isinya.'}};
+// ---------- IFC export ----------
+function buildIFC(){
+const L=[];let n=0;
+const e=t=>{n++;L.push('#'+n+'='+t+';');return '#'+n};
+const f=v=>(+v).toFixed(4);
+const G='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
+const gid=()=>{let t=G[Math.floor(Math.random()*4)];for(let i=0;i<21;i++)t+=G[Math.floor(Math.random()*64)];return "'"+t+"'"};
+const esc=t=>"'"+String(t||'').replace(/'/g,"''").replace(/[\r\n]+/g,' ')+"'";
+const p3=(x,y,z)=>e(`IFCCARTESIANPOINT((${f(x)},${f(y)},${f(z)}))`),p2=(x,y)=>e(`IFCCARTESIANPOINT((${f(x)},${f(y)}))`),dr=(x,y,z)=>e(`IFCDIRECTION((${f(x)},${f(y)},${f(z)}))`);
+const a3=(o,z,x)=>e(`IFCAXIS2PLACEMENT3D(${p3(o[0],o[1],o[2])},${z?dr(z[0],z[1],z[2]):'$'},${x?dr(x[0],x[1],x[2]):'$'})`);
+const lp=(rel,o,z,x)=>e(`IFCLOCALPLACEMENT(${rel||'$'},${a3(o,z,x)})`);
+const ctx=e(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,${a3([0,0,0])},$)`);
+const u=[e('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)'),e('IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.)'),e('IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.)')];
+const prj=e(`IFCPROJECT(${gid()},$,'Mini BIM',$,$,$,$,(${ctx}),${e(`IFCUNITASSIGNMENT((${u.join(',')}))`)})`);
+const spl=lp(null,[0,0,0]),bpl=lp(spl,[0,0,0]);
+const site=e(`IFCSITE(${gid()},$,'Site',$,$,${spl},$,$,.ELEMENT.,$,$,$,$,$)`);
+const bld=e(`IFCBUILDING(${gid()},$,'Building',$,$,${bpl},$,$,.ELEMENT.,$,$,$)`);
+e(`IFCRELAGGREGATES(${gid()},$,$,$,${prj},(${site}))`);e(`IFCRELAGGREGATES(${gid()},$,$,$,${site},(${bld}))`);
+const shape=so=>e(`IFCPRODUCTDEFINITIONSHAPE($,$,(${e(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${so}))`)}))`);
+const ext=(pf,d)=>e(`IFCEXTRUDEDAREASOLID(${pf},${a3([0,0,0])},${dr(0,0,1)},${f(d)})`);
+const rc=(xd,yd,cx,cy)=>e(`IFCRECTANGLEPROFILEDEF(.AREA.,$,${e(`IFCAXIS2PLACEMENT2D(${p2(cx,cy)},$)`)},${f(xd)},${f(yd)})`);
+const matCache={};
+function matEnt(name){if(!name)return null;if(matCache[name])return matCache[name];const m=e(`IFCMATERIAL(${esc(name)})`);matCache[name]=m;return m}
+function withLayerNote(info,layers){if(!layers||!layers.length)return info;
+const txt=layers.map(l=>`${l.name||'Lapisan'} (${l.material||'-'}, ${(+l.t).toFixed(3)}m)`).join(' | ');
+const base=info?Object.assign({},info,{custom:(info.custom||[]).slice()}):{name:'',material:'',notes:'',custom:[]};
+base.custom.push({k:'Lapisan',v:txt});return base}
+function attach(elId,info,defName){
+const nm=(info&&info.name)||defName;
+if(info&&info.material){const m=matEnt(info.material);e(`IFCRELASSOCIATESMATERIAL(${gid()},$,$,$,(${elId}),${m})`)}
+const props=[];if(info&&info.material)props.push(['Material',info.material]);if(info&&info.notes)props.push(['Catatan',info.notes]);
+if(info&&info.custom)for(const c of info.custom)if(c.k)props.push([c.k,c.v]);
+if(props.length){const pv=props.map(([k,v])=>e(`IFCPROPERTYSINGLEVALUE(${esc(k)},$,IFCLABEL(${esc(v)}),$)`));
+const pset=e(`IFCPROPERTYSET(${gid()},$,'MiniBIM_Properties',$,(${pv.join(',')}))`);
+e(`IFCRELDEFINESBYPROPERTIES(${gid()},$,$,$,(${elId}),${pset})`)}
+return nm}
+const storeyOf={};
+S.levels.forEach((lv,i)=>{const p=lp(bpl,[0,0,levelElev(lv.id)]);const st=e(`IFCBUILDINGSTOREY(${gid()},$,${esc(lv.name)},$,$,${p},$,$,.ELEMENT.,${f(levelElev(lv.id))})`);storeyOf[lv.id]={id:st,placement:p,els:[]}});
+e(`IFCRELAGGREGATES(${gid()},$,$,$,${bld},(${S.levels.map(lv=>storeyOf[lv.id].id).join(',')}))`);
+S.walls.forEach((w,i)=>{const st=storeyOf[w.levelId];if(!st)return;
+const entName=w.glass?'IFCCURTAINWALL':'IFCWALL',pre=w.glass?'.NOTDEFINED.':'.STANDARD.';
+if(w.curve){const pts=arcPoints(w.a,w.curve,w.b,10);
+for(let k=0;k<pts.length-1;k++){const a2=pts[k],b2=pts[k+1],Ln2=Math.hypot(b2[0]-a2[0],b2[1]-a2[1]);if(Ln2<.01)continue;
+const ux2=(b2[0]-a2[0])/Ln2,uy2=(b2[1]-a2[1])/Ln2;
+const wp2=lp(st.placement,[a2[0],a2[1],0],[0,0,1],[ux2,uy2,0]);
+const wl2=e(`${entName}(${gid()},$,${esc('Wall '+(i+1)+' (kurva) seg'+(k+1))},$,$,${wp2},${shape(ext(rc(Ln2,w.t,Ln2/2,0),w.h))},$,${pre})`);
+attach(wl2,withLayerNote(w.info,w.layers),'Wall '+(i+1));st.els.push(wl2)}
+return}
+const Ln=len(w);if(Ln<.01)return;const ux=(w.b[0]-w.a[0])/Ln,uy=(w.b[1]-w.a[1])/Ln;
+const wp=lp(st.placement,[w.a[0],w.a[1],0],[0,0,1],[ux,uy,0]);
+const wl=e(`${entName}(${gid()},$,${esc('Wall '+(i+1))},$,$,${wp},${shape(ext(rc(Ln,w.t,Ln/2,0),w.h))},$,${pre})`);
+attach(wl,withLayerNote(w.info,w.layers),'Wall '+(i+1));st.els.push(wl);
+for(const o of S.ops.filter(o=>o.wall===w.id)){const x0=Math.max(0,o.d-o.w/2),ow=Math.min(Ln,o.d+o.w/2)-x0,oh=Math.min(o.h,w.h-o.sill);if(ow<.01||oh<.01)continue;
+const opn=e(`IFCOPENINGELEMENT(${gid()},$,'Opening',$,$,${lp(wp,[x0,0,o.sill])},${shape(ext(rc(ow,w.t+.2,ow/2,0),oh))},$,.OPENING.)`);
+e(`IFCRELVOIDSELEMENT(${gid()},$,$,$,${wl},${opn})`);
+const isD=o.type==='door';
+const el=e(`${isD?'IFCDOOR':'IFCWINDOW'}(${gid()},$,${esc(isD?'Door':'Window')},$,$,${lp(wp,[x0,0,o.sill])},${shape(ext(rc(ow,w.t*.4,ow/2,0),oh))},$,${f(oh)},${f(ow)},${isD?'.DOOR.':'.WINDOW.'},.NOTDEFINED.,$)`);
+attach(el,o.info,isD?'Door':'Window');st.els.push(el);e(`IFCRELFILLSELEMENT(${gid()},$,$,$,${opn},${el})`)}});
+S.cols.forEach((c,i)=>{const st=storeyOf[c.levelId];if(!st)return;const pl=lp(st.placement,[c.pos[0],c.pos[1],c.elev]);
+const nm='Column '+(i+1);const el=e(`IFCCOLUMN(${gid()},$,${esc(nm)},$,$,${pl},${shape(ext(rc(c.w,c.d,0,0),c.h))},$,.COLUMN.)`);attach(el,c.info,nm);st.els.push(el)});
+S.slabs.forEach((s,i)=>{const st=storeyOf[s.levelId];if(!st)return;const r=rect(s),rf=s.kind==='roof',cl=s.kind==='ceiling',o=rf?s.over:0,x0=r[0]-o,y0=r[1]-o,W=r[2]-r[0]+2*o,D=r[3]-r[1]+2*o;
+const nm=(rf?'Roof ':cl?'Ceiling ':'Floor ')+(i+1);
+if(rf&&s.rise>0){const ax=W>=D,B=ax?D:W,Ln=ax?W:D;
+const pl=ax?lp(st.placement,[x0,y0+D/2,s.elev],[1,0,0],[0,1,0]):lp(st.placement,[x0+W/2,y0,s.elev],[0,1,0],[-1,0,0]);
+const poly=e(`IFCPOLYLINE((${p2(-B/2,0)},${p2(B/2,0)},${p2(0,s.rise)},${p2(-B/2,0)}))`);
+const so=ext(e(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${poly})`),Ln);
+const el=e(`IFCROOF(${gid()},$,${esc(nm)},$,$,${pl},${shape(so)},$,.GABLE_ROOF.)`);attach(el,withLayerNote(s.info,s.layers),nm);st.els.push(el);
+return}
+const pre=rf?'.FLAT_ROOF.':cl?'.CEILING.':'.FLOOR.';
+const entType=cl?'IFCCOVERING':(rf?'IFCROOF':'IFCSLAB');
+const topZ=s.kind==='floor'?s.elev:s.elev+s.t;
+const pieces=slabPiecesMinusVoids([x0,y0,x0+W,y0+D],s.levelId);
+pieces.forEach((pc,pi)=>{const[px0,py0,px1,py1]=pc,pw=px1-px0,pd=py1-py0;if(pw<.01||pd<.01)return;
+const pl=lp(st.placement,[px0,py0,topZ-s.t]);
+const so=ext(rc(pw,pd,pw/2,pd/2),s.t);
+const pnm=pieces.length>1?nm+' bag.'+(pi+1):nm;
+const el=e(`${entType}(${gid()},$,${esc(pnm)},$,$,${pl},${shape(so)},$,${pre})`);attach(el,withLayerNote(s.info,s.layers),pnm);st.els.push(el)})});
+S.stairs.forEach((st2,i)=>{const stEntry=storeyOf[st2.levelId];if(!stEntry)return;
+const{n:nn,riser}=stairSteps(st2),dx=st2.b[0]-st2.a[0],dy=st2.b[1]-st2.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,totalH=nn*riser;
+const pl=lp(stEntry.placement,[st2.a[0],st2.a[1],0],[0,0,1],[ux,uy,0]);
+const nm='Stair '+(i+1);
+const el=e(`IFCSTAIR(${gid()},$,${esc(nm)},$,$,${pl},${shape(ext(rc(Ln,st2.w,Ln/2,0),totalH))},$,.NOTDEFINED.)`);
+attach(el,st2.info,nm);stEntry.els.push(el)});
+for(const lv of S.levels){const st=storeyOf[lv.id];if(st.els.length)e(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${gid()},$,$,$,(${st.els.join(',')}),${st.id})`)}
+return "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('mini-bim.ifc','"+new Date().toISOString().slice(0,19)+"',('Mini BIM'),(''),'Mini BIM','Mini BIM','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"+L.join('\n')+"\nENDSEC;\nEND-ISO-10303-21;\n"}
+$('ifcb').onclick=()=>{if(!S.walls.length&&!S.slabs.length){$('ifcs').textContent='Belum ada elemen untuk diekspor.';return}
+const t=buildIFC();$('ifc').value=t;
+try{const u=URL.createObjectURL(new Blob([t],{type:'application/octet-stream'})),a=document.createElement('a');a.href=u;a.download='mini-bim.ifc';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500)}catch(x){}
+$('ifcs').textContent='IFC4 dibuat ('+t.split('\n').length+' baris, '+S.levels.length+' level). Jika unduhan tidak berjalan (misalnya di halaman terpublikasi), klik "Salin IFC" lalu tempel ke file bernama mini-bim.ifc.'};
+$('ifcc').onclick=async()=>{if(!$('ifc').value)$('ifcb').click();const ta=$('ifc');try{await navigator.clipboard.writeText(ta.value)}catch(x){ta.select();try{document.execCommand('copy')}catch(y){}}$('ifcs').textContent='IFC disalin ke clipboard. Simpan sebagai mini-bim.ifc.'};
+addEventListener('resize',()=>{size3();draw()});
+$('gh').value=curLevel().height;
+hint();size3();draw();build();sched();props();renderLevels();elist();renderFamilies();
+</script></body></html>
