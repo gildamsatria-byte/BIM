@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GilBIM</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f6f5f2;--card:#fff;--fg:#1f2328;--mut:#6b7280;--line:#dcdad3;--ac:#0f6e56;--grid:#ebe9e3;--wall:#1f2328;--sel:#d85a30;--ghost:#9c9890}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171716;--card:#222220;--fg:#ecebe6;--mut:#9a9a92;--line:#3a3a36;--ac:#4fc3a1;--grid:#2c2c29;--wall:#ecebe6;--sel:#f0997b;--ghost:#5c5952}}
+:root[data-theme="dark"]{--bg:#171716;--card:#222220;--fg:#ecebe6;--mut:#9a9a92;--line:#3a3a36;--ac:#4fc3a1;--grid:#2c2c29;--wall:#ecebe6;--sel:#f0997b;--ghost:#5c5952}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:12px}
+h1{font-size:17px;margin:0 0 10px}
+.bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center}
+button{font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+button.sm{padding:3px 8px;font-size:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;min-width:0;margin-bottom:10px}
+.card h2{font-size:12px;margin:0 0 6px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+canvas,#v3{width:100%;height:360px;display:block;border-radius:6px}
+#hint{color:var(--mut);font-size:12px;margin:6px 0 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+label{font-size:12px;color:var(--mut)}
+select{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+input[type=number]{width:70px;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+input[type=text]{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:600;font-size:12px}
+textarea{width:100%;font:12px monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px}
+#json{height:100px}#ifc{height:90px}
+.wrap{overflow-x:auto}
+.lvlrow{display:flex;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
+.lvlrow:last-child{border-bottom:none}
+.lvlrow input[type=text]{width:110px}
+.lvlrow .elev{font-size:12px;color:var(--mut);min-width:78px}
+.propbox{width:100%;border-top:1px dashed var(--line);margin-top:8px;padding-top:8px}
+.propbox .row{margin-bottom:4px}
+.propbox textarea{height:44px}
+.custrow{display:flex;gap:4px;margin-bottom:4px}
+.custrow input{flex:1;min-width:0}
+.toolgroups{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;align-items:flex-start}
+.toolgroup{display:flex;flex-direction:column;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 7px}
+.toolgroup .tglbl{font-size:10px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:0 0 1px 1px}
+.toolgroup .row{gap:5px}
+.acc{background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.acc>summary{cursor:pointer;list-style:none;padding:8px;font-size:12px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:6px;user-select:none}
+.acc>summary::-webkit-details-marker{display:none}
+.acc>summary::before{content:'▸';display:inline-block;transition:transform .15s;color:var(--fg)}
+.acc[open]>summary::before{transform:rotate(90deg)}
+.acc>.accbody{padding:0 8px 8px}
+</style></head><body>
+<h1>GilBIM — pemodel gedung sederhana</h1>
+
+<div class="card" id="levelsCard">
+<h2>Level / Lantai</h2>
+<div id="levelsList"></div>
+<div class="row" style="margin-top:8px">
+<button id="addLevel">+ Tambah lantai</button>
+<label class="row" style="gap:4px"><input type="checkbox" id="ghostChk" checked> Tampilkan level di bawah sebagai referensi</label>
+<span class="row" style="margin-left:auto">
+<button id="newFile" style="border-color:#c0392b;color:#c0392b">🗑 Mulai dari file kosong</button>
+<span id="newFileConfirm" class="row" style="display:none">
+<b style="color:#c0392b;font-size:12px">Yakin? Semua lantai &amp; elemen akan hilang permanen.</b>
+<button id="newFileYes" class="sm" style="background:#c0392b;color:#fff;border-color:#c0392b">Ya, hapus &amp; mulai kosong</button>
+<button id="newFileNo" class="sm">Batal</button>
+</span></span>
+</div>
+</div>
+
+<div class="toolgroups">
+<div class="toolgroup" id="tools">
+<div class="tglbl">Pemodelan</div>
+<div class="row">
+<button data-t="wall" class="on">Dinding</button><button data-t="curvewall">Dinding kurva</button><button data-t="door">Pintu</button><button data-t="window">Jendela</button><button data-t="column">Kolom</button><button data-t="beam">Balok</button><button data-t="floor">Lantai</button><button data-t="roof">Atap</button><button data-t="roofpoly">Atap (polyline)</button><button data-t="ceiling">Plafon</button><button data-t="void">Void lantai</button><button data-t="stair">Tangga</button><button data-t="dim">Dimensi</button><button data-t="text">Teks</button><button data-t="section">Garis potongan</button>
+</div>
+</div>
+<div class="toolgroup" id="toolsEdit">
+<div class="tglbl">Edit</div>
+<div class="row">
+<button data-t="select">Pilih (geser elemen di sini)</button>
+<button id="del">Hapus terpilih</button><button id="clear">Kosongkan level ini</button>
+</div>
+</div>
+</div>
+<div class="bar">
+<span class="row"><button id="zoomIn" class="sm">Zoom +</button><button id="zoomOut" class="sm">Zoom -</button><button id="zoomReset" class="sm">Reset tampilan</button><label style="font-size:11px">(scroll = zoom, tombol tengah mouse / Spasi+geser = pan)</label></span>
+<span class="row"><label>Tinggi dinding baru</label><input type="number" id="gh" value="3" step="0.1" min="1"><label>Tebal</label><input type="number" id="gt" value="0.2" step="0.05" min="0.05"><label class="row" style="gap:4px"><input type="checkbox" id="curtainChk"> Curtain wall (kaca)</label></span>
+<span class="row"><label>Tipe/family aktif</label><select id="famSel"><option value="">(tidak ada)</option></select><button id="famSave" class="sm">💾 Simpan tipe dari elemen terpilih</button></span>
+</div>
+<div class="card" id="famCard"><h2>Tipe / Family kustom</h2><div id="famList"></div><p style="color:var(--mut);font-size:12px;margin:6px 0 0">Pilih elemen di denah (mode "Pilih"), lalu klik "Simpan tipe dari elemen terpilih" untuk menyimpan dimensinya sebagai tipe yang bisa dipakai ulang. Saat tool dinding/pintu/jendela/kolom/lantai/atap/tangga aktif, pilih tipe pada dropdown "Tipe/family aktif" agar elemen baru otomatis memakai dimensi tipe tersebut.</p></div>
+<div class="grid">
+<div class="card"><h2>Denah (2D) — <span id="curLvlLbl"></span></h2><canvas id="plan"></canvas><p id="hint"></p><div id="props"></div></div>
+<div class="card"><h2>Model 3D / Tampak / Potongan</h2>
+<div class="row" id="viewTools">
+<button data-v="3d" class="on">3D</button><button data-v="front">Depan</button><button data-v="back">Belakang</button><button data-v="left">Kiri</button><button data-v="right">Kanan</button><button data-v="section">Potongan</button>
+<button id="flipSec" class="sm">Balik arah potongan</button>
+</div>
+<p id="viewMsg" style="color:var(--mut);font-size:12px;margin:4px 0 6px"></p>
+<div id="v3"></div></div>
+</div>
+<div class="grid">
+<details class="acc wrap"><summary>Schedule / kuantitas</summary><div class="accbody" id="sched"></div></details>
+<details class="acc wrap"><summary>Daftar elemen & informasi</summary><div class="accbody" id="elist"></div></details>
+</div>
+<div class="grid">
+<div class="card"><h2>Data (JSON)</h2><textarea id="json" spellcheck="false"></textarea><div class="row" style="margin-top:6px"><button id="exp">Ekspor ke kotak</button><button id="imp">Muat dari kotak</button></div><p id="jsons" style="color:var(--mut);font-size:12px;margin:6px 0 0"></p></div>
+<div class="card"><h2>Ekspor IFC / DXF</h2><div class="row"><button id="ifcb">Ekspor IFC</button><button id="ifcc">Salin IFC</button><button id="dxfb">Ekspor DXF</button></div><p id="ifcs" style="color:var(--mut);font-size:12px;margin:6px 0"></p><textarea id="ifc" spellcheck="false" readonly placeholder="Hasil IFC muncul di sini"></textarea></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const S={levels:[{id:1,name:'Lantai 1',height:3.5},{id:2,name:'Lantai 2',height:3}],walls:[],ops:[],slabs:[],cols:[],dims:[],notes:[],stairs:[],voids:[],beams:[],families:[],section:null,id:3,cur:1};
+let tool='wall',start=null,hover=null,sel=null,cpts=[];
+let view={panX:0,panY:0,zoom:1};
+const $=id=>document.getElementById(id),snap=v=>Math.round(v*2)/2;
+const WX=24,WY=16;
+function sample(){
+const w1=[0,0,8,0],w2=[8,0,8,6],w3=[8,6,0,6],w4=[0,6,0,0];
+const mk=(a,b,lv,h)=>({id:S.id++,levelId:lv,a:[a[0]+2,a[1]+2],b:[b[0]+2,b[1]+2],h,t:.2,glass:false,curve:null,joined:true,layers:null,info:null});
+const L1=[mk(w1.slice(0,2),w1.slice(2),1,3.5),mk(w2.slice(0,2),w2.slice(2),1,3.5),mk(w3.slice(0,2),w3.slice(2),1,3.5),mk(w4.slice(0,2),w4.slice(2),1,3.5)];
+const L2=[mk(w1.slice(0,2),w1.slice(2),2,3),mk(w2.slice(0,2),w2.slice(2),2,3),mk(w3.slice(0,2),w3.slice(2),2,3),mk(w4.slice(0,2),w4.slice(2),2,3)];
+S.walls=[...L1,...L2];
+S.ops=[{id:S.id++,levelId:1,wall:L1[0].id,d:2.5,type:'door',w:.9,h:2.1,sill:0,info:null},
+{id:S.id++,levelId:1,wall:L1[1].id,d:3,type:'window',w:1.5,h:1.2,sill:.9,info:null},
+{id:S.id++,levelId:2,wall:L2[1].id,d:3,type:'window',w:1.5,h:1.2,sill:.9,info:null}];
+S.slabs=[{id:S.id++,levelId:1,kind:'floor',a:[2,2],b:[10,8],t:.2,elev:0,rise:0,over:0,info:null},
+{id:S.id++,levelId:2,kind:'roof',a:[2,2],b:[10,8],t:.15,elev:3,rise:1.5,over:.4,info:null}];
+S.cols=[{id:S.id++,levelId:1,pos:[2,2],w:.3,d:.3,h:3.5,elev:0,info:null},{id:S.id++,levelId:1,pos:[10,2],w:.3,d:.3,h:3.5,elev:0,info:null}];
+S.dims=[{id:S.id++,levelId:1,a:[2,2],b:[10,2],off:.5}];
+S.notes=[{id:S.id++,levelId:1,pos:[4.5,9],text:'Contoh keterangan'}];
+S.stairs=[{id:S.id++,levelId:1,a:[3.5,3],b:[3.5,5.5],w:1.1,info:null}];
+S.voids=[];
+S.beams=[{id:S.id++,levelId:1,a:[0,2],b:[8,2],bw:.25,bh:.4,elev:3.1,info:null}];
+S.families=[];
+S.section={a:[6,-1],b:[6,9],flip:false};
+}
+try{const j=localStorage.getItem('minibim');if(j){Object.assign(S,JSON.parse(j));migrate()}else sample()}catch(e){sample()}
+function migrate(){
+if(!S.levels||!S.levels.length){S.levels=[{id:1,name:'Lantai 1',height:+($('gh')?$('gh').value:3)||3}];S.cur=1;
+for(const w of S.walls)w.levelId=1;for(const o of S.ops)o.levelId=1;for(const s of S.slabs)s.levelId=1;}
+if(!S.cols)S.cols=[];if(!S.dims)S.dims=[];if(!S.notes)S.notes=[];if(S.section===undefined)S.section=null;
+if(!S.stairs)S.stairs=[];if(!S.voids)S.voids=[];if(!S.families)S.families=[];if(!S.beams)S.beams=[];
+for(const w of S.walls){if(w.info===undefined)w.info=null;if(w.glass===undefined)w.glass=false;if(w.curve===undefined)w.curve=null;if(w.joined===undefined)w.joined=true;if(w.layers===undefined)w.layers=null}
+for(const o of S.ops)if(o.info===undefined)o.info=null;
+for(const s of S.slabs){if(s.info===undefined)s.info=null;if(s.layers===undefined)s.layers=null;if(s.kind==='ceiling'&&s.over===undefined)s.over=0;
+if(s.shape==='poly'&&(!Array.isArray(s.pts)||s.pts.length<3))s.shape=undefined;
+if(s.over===undefined)s.over=0;if(s.rise===undefined)s.rise=0;
+if(s.kind==='roof'&&s.shape==='poly'&&s.slopeDeg===undefined)s.slopeDeg=s.rise>0?Math.max(1,Math.min(89,riseToSlopeDeg(s.rise,roofHalfSpan(s)))):30}
+for(const st of S.stairs){if(st.info===undefined)st.info=null;if(!st.w)st.w=1.1}
+for(const vd of S.voids)if(vd.info===undefined)vd.info=null;
+for(const bm of S.beams){if(bm.info===undefined)bm.info=null;if(bm.bw===undefined)bm.bw=.25;if(bm.bh===undefined)bm.bh=.4;if(bm.elev===undefined)bm.elev=0}
+if(!S.cur||!S.levels.find(l=>l.id===S.cur))S.cur=S.levels[0].id;
+}
+migrate();
+function save(){try{localStorage.setItem('minibim',JSON.stringify(S))}catch(e){}}
+const rect=s=>[Math.min(s.a[0],s.b[0]),Math.min(s.a[1],s.b[1]),Math.max(s.a[0],s.b[0]),Math.max(s.a[1],s.b[1])];
+// ---------- polygon-footprint helpers (atap polyline / non-rectangular) ----------
+function isPolySlab(s){return s&&s.shape==='poly'&&Array.isArray(s.pts)&&s.pts.length>=3}
+function slabFootprint(s){if(isPolySlab(s))return s.pts;const r=rect(s);return[[r[0],r[1]],[r[2],r[1]],[r[2],r[3]],[r[0],r[3]]]}
+function polyBBox(pts){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const p of pts){x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1])}return[x0,y0,x1,y1]}
+function polyArea(pts){let a=0;for(let i=0;i<pts.length;i++){const p=pts[i],q=pts[(i+1)%pts.length];a+=p[0]*q[1]-q[0]*p[1]}return Math.abs(a)/2}
+function pointInPoly(p,pts){let inside=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){const xi=pts[i][0],yi=pts[i][1],xj=pts[j][0],yj=pts[j][1];
+const hit=((yi>p[1])!==(yj>p[1]))&&(p[0]<(xj-xi)*(p[1]-yi)/(yj-yi+1e-12)+xi);if(hit)inside=!inside}return inside}
+// half of the shorter footprint dimension — used to convert ridge-height ("Naik") to/from a slope angle
+function roofHalfSpan(s){const bb=polyBBox(slabFootprint(s)),W=bb[2]-bb[0],D=bb[3]-bb[1];return Math.max(.01,Math.min(W,D)/2)}
+function riseToSlopeDeg(rise,halfSpan){return halfSpan>1e-6?Math.atan2(Math.max(0,rise),halfSpan)*180/Math.PI:0}
+function slopeDegToRise(deg,halfSpan){return Math.max(0,Math.tan(Math.max(0,Math.min(89,deg))*Math.PI/180)*halfSpan)}
+// ---------- pitched polyline roof: Euclidean-distance-to-boundary height field ----------
+// h(x,y) = tan(slope) * distToPolyBoundary((x,y), pts), where distToPolyBoundary is the minimum
+// point-to-SEGMENT distance (clamped to each finite edge, never distance to an infinite line) over every
+// edge of the polygon. This is a closed-form, always-non-negative approximation of the true straight-
+// skeleton hip/valley height field: exact for convex polygons (matches the old iterative-erosion skeleton
+// there), and — critically — correct in spirit for concave polygons too (L/T/cross shapes), because a
+// "seam" between two wings of an L-shape is not a real edge of the polygon at all, so points along it are
+// simply interior points whose nearest boundary feature is a real eave some distance away: they get a
+// proper positive elevated height there, i.e. a genuine geometric valley, instead of the old convex-
+// decomposition approach's height-zero fake seam (that approach ran the old exact-but-convex-only skeleton
+// independently on synthetic sub-polygons whose shared internal cut line was NOT a real eave, but which the
+// per-piece skeleton nonetheless treated as one — collapsing the roof to the ground along that line).
+// The only place this deviates from a true straight skeleton is a small region near a reflex vertex, where
+// the real skeleton uses an angular bisector and this formula instead traces a circular arc (the locus of
+// points equidistant from the vertex itself vs. the nearest edge) — a minor, usually visually negligible
+// approximation given up in exchange for a robust closed form that never needs topology/event handling.
+function polySignedArea(pts){let a=0;for(let i=0;i<pts.length;i++){const p=pts[i],q=pts[(i+1)%pts.length];a+=p[0]*q[1]-q[0]*p[1]}return a/2}
+function polyBBoxDiag(pts){const bb=polyBBox(pts);return Math.hypot(bb[2]-bb[0],bb[3]-bb[1])}
+function distPointToSegment(px,py,ax,ay,bx,by){
+const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy;
+if(L2<1e-12)return Math.hypot(px-ax,py-ay);
+let t=((px-ax)*dx+(py-ay)*dy)/L2;t=Math.max(0,Math.min(1,t));
+return Math.hypot(px-(ax+dx*t),py-(ay+dy*t))}
+// unsigned Euclidean distance from p to the polygon boundary — min over every edge, distance-to-FINITE-
+// SEGMENT (clamped), never distance-to-infinite-line. Correct regardless of convexity or winding order.
+function distToPolyBoundary(p,pts){
+let best=1e18;const n=pts.length;
+for(let i=0;i<n;i++){const a=pts[i],b=pts[(i+1)%n],d=distPointToSegment(p[0],p[1],a[0],a[1],b[0],b[1]);if(d<best)best=d}
+return best}
+// ear-clipping: berulang kali mencari verteks "telinga" (bukan reflex, segitiga dgn 2 tetangganya tidak
+// memuat verteks lain), memotongnya, ulangi hingga tersisa 1 segitiga. Menangani poligon sederhana umum
+// (boleh punya verteks reflex — memang untuk itu algoritma ini dipakai). Dilindungi batas iterasi maksimum
+// dan fallback fan-triangulation-dari-verteks-pertama bila macet (mis. akibat error numerik) — tidak pernah
+// hang/melempar exception. Dipakai sebagai triangulasi AWAL (seed) untuk adaptive mesh atap miring di bawah
+// — tidak lagi dipakai untuk dekomposisi cembung (lihat header di atas), tapi tetap tepat untuk seed karena
+// sudah menangani verteks reflex secara native.
+function triangulateEarClip(pts0){
+	const n0=pts0.length;if(n0<3)return[];if(n0===3)return[pts0.slice()];
+	let poly=pts0.map(p=>[p[0],p[1]]);
+	const diag=Math.max(1e-6,polyBBoxDiag(poly)),eps=1e-9*diag;
+	const cross=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+	const isReflex=(prev,cur,next)=>cross(prev,cur,next)<-eps;
+	const pointInTri=(p,a,b,c)=>{const d1=cross(a,b,p),d2=cross(b,c,p),d3=cross(c,a,p);
+	const hasNeg=d1<-eps||d2<-eps||d3<-eps,hasPos=d1>eps||d2>eps||d3>eps;return!(hasNeg&&hasPos)};
+	const tris=[];const maxIter=poly.length*poly.length+64;let guard=0;
+	while(poly.length>3&&guard<maxIter){guard++;
+	const m=poly.length;let earFound=false;
+	for(let i=0;i<m;i++){const prev=poly[(i-1+m)%m],cur=poly[i],next=poly[(i+1)%m];
+	if(isReflex(prev,cur,next))continue;
+	let contains=false;
+	for(let j=0;j<m;j++){if(j===(i-1+m)%m||j===i||j===(i+1)%m)continue;
+	if(pointInTri(poly[j],prev,cur,next)){contains=true;break}}
+	if(contains)continue;
+	tris.push([prev.slice(),cur.slice(),next.slice()]);poly.splice(i,1);earFound=true;break}
+	if(!earFound)break}
+	if(poly.length===3)tris.push([poly[0].slice(),poly[1].slice(),poly[2].slice()]);
+	else if(poly.length>3)for(let i=1;i<poly.length-1;i++)tris.push([poly[0].slice(),poly[i].slice(),poly[i+1].slice()]);
+	return tris}
+function triArea3D(t){const a=t[0],b=t[1],c=t[2],ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2],vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+	const cx2=uy*vz-uz*vy,cy2=uz*vx-ux*vz,cz2=ux*vy-uy*vx;return .5*Math.hypot(cx2,cy2,cz2)}
+// Adaptive terrain-style mesh for the pitched-roof height field h(x,y)=slope*distToPolyBoundary. Starts
+// from an ear-clipping triangulation of the footprint, then recursively quadrisects (midpoint-of-each-edge)
+// any triangle whose true height at its centroid disagrees — beyond a size-scaled tolerance — with the
+// height linearly interpolated from its own 3 corners' heights (which, at the centroid's barycentric
+// coordinates (1/3,1/3,1/3), is just the average of the 3 corner heights). A flat/planar roof plane (most
+// of a simple hip roof, away from ridges/hips/valleys) needs zero extra subdivision because h() truly IS
+// linear there already; only the curved/creased regions near ridges, hips and valleys get refined, and only
+// until they look acceptably crisp — bounded by maxDepth so it always terminates. Every leaf triangle's 3
+// corners get their own exact h() value (no interpolation in the final geometry — the adaptivity only
+// decides how finely to sample, never approximates the output vertices themselves).
+function polyRoofHeightAt(p,basePts,slope){return slope*distToPolyBoundary(p,basePts)}
+function adaptivePitchedRoofTriangles(inputPts,slopeDeg){
+	const deg=Math.max(0,Math.min(89,slopeDeg||0));if(deg<=0)return null;
+	const slope=Math.tan(deg*Math.PI/180);
+	let base=(inputPts||[]).map(p=>[+p[0],+p[1]]);
+	base=base.filter((p,i)=>{const q=base[(i-1+base.length)%base.length];return Math.hypot(p[0]-q[0],p[1]-q[1])>1e-6});
+	if(base.length<3)return null;
+	if(polySignedArea(base)<0)base=base.slice().reverse();
+	const diag=Math.max(1e-6,polyBBoxDiag(base)),tol=Math.max(.01,.01*diag),maxDepth=7;
+	const h=p=>polyRoofHeightAt(p,base,slope);
+	let seed=null;try{seed=triangulateEarClip(base)}catch(e){seed=null}
+	if(!seed||!seed.length){seed=[];for(let i=1;i<base.length-1;i++)seed.push([base[0],base[i],base[i+1]])}
+	const leaves=[];
+	function subdivide(tri,depth){
+		const a=tri[0],b=tri[1],c=tri[2];
+		const cxp=(a[0]+b[0]+c[0])/3,cyp=(a[1]+b[1]+c[1])/3;
+		const hTrue=h([cxp,cyp]),hLin=(h(a)+h(b)+h(c))/3;
+		if(depth>=maxDepth||Math.abs(hTrue-hLin)<=tol){leaves.push(tri);return}
+		const mab=[(a[0]+b[0])/2,(a[1]+b[1])/2],mbc=[(b[0]+c[0])/2,(b[1]+c[1])/2],mca=[(c[0]+a[0])/2,(c[1]+a[1])/2];
+		subdivide([a,mab,mca],depth+1);subdivide([mab,b,mbc],depth+1);
+		subdivide([mca,mbc,c],depth+1);subdivide([mab,mbc,mca],depth+1)}
+	for(const tri of seed)subdivide(tri,0);
+	const V=(p,y)=>[p[0],y,p[1]];
+	// vertex order [a,c,b] (not [a,b,c]) — mapping 2D CCW (x,y) winding into 3D (x,height,y-as-z) is a mirror
+	// transform, so a CCW-in-plan triangle becomes CW-in-3D unless we swap two vertices here; without this the
+	// computed face/vertex normals all point downward (verified: 100% of leaf triangles had normal.y<0) and,
+	// since materials render single-sided by default, the whole pitched-roof surface disappears from any
+	// camera looking down/outward at it — exactly the "bagian tertentu tidak kelihatan" symptom reported.
+	const tris3d=leaves.map(tri=>[V(tri[0],h(tri[0])),V(tri[2],h(tri[2])),V(tri[1],h(tri[1]))]);
+	let maxH=0;for(const tri of leaves)for(const p of tri){const hp=h(p);if(hp>maxH)maxH=hp}
+	// `leaves` are the pre-3D-mapping 2D leaf triangles (each [[x,y],[x,y],[x,y]], plan winding, UNSWAPPED —
+	// i.e. matching the original ear-clip seed order, not the mirrored tris3d order above). Returned alongside
+	// tris3d so callers that need plain 2D geometry (e.g. the 2D ridge/hip/valley crease-line overlay) can
+	// reuse this exact triangulation+adaptive-subdivision result instead of re-deriving it.
+	return{base,tris:tris3d,leaves,h,maxH,triCount:tris3d.length}}
+// ---------- 2D ridge/hip/valley "crease line" detection for pitched polyline roofs ----------
+// Derives, from the adaptive height-field triangulation above, the interior mesh edges where the roof
+// surface folds (ridge = peak, hip = rising corner seam, valley = concave seam) so the plan view can draw
+// them even though there's no explicit ridge-polyline data structure any more (see comment near the old
+// removed 2D overlay, further down in draw()). Method: build an edge-adjacency map over the 2D leaf
+// triangles; for every edge shared by exactly two triangles (an interior edge — footprint boundary edges
+// are used by only one triangle and are skipped), compare the two triangles' 3D plane normals (via
+// (x,y,h) cross product); if the angle between them exceeds a small threshold, the edge is a crease.
+// Empirically (verified on a rectangular hip roof) there's a clean angular gap between genuinely co-planar
+// mesh edges (~0°) and real fold edges (14–60°, matching the roof's own pitch geometry) — so a small
+// threshold reliably separates real folds from flat-region floating-point noise with no false positives.
+// The adaptive mesh represents each true fold line as many small crease-flagged mesh edges (subdivision
+// gets finer near a fold, and neighboring triangles can subdivide to different depths — a T-junction
+// situation — which keeps a single continuous hip/ridge from ever being one long uninterrupted polyline
+// candidate in the raw mesh), so rather than chase a brittle graph-merge to force them into a handful of
+// perfectly clean polylines, every crease edge is returned as-is: a short, thin, dashed 2D segment. Drawn
+// together they visually trace the ridge/hip/valley structure just as clearly as one continuous line would.
+function roofCreaseEdges(s){
+	const deg=Math.max(0,Math.min(89,s.slopeDeg||0));if(deg<=0)return[];
+	let res=null;try{res=adaptivePitchedRoofTriangles(s.pts,deg)}catch(e){res=null}
+	if(!res||!res.leaves||!res.leaves.length)return[];
+	const h=res.h,leaves=res.leaves;
+	const EPS=1e-6,ptKey=p=>Math.round(p[0]/EPS)+','+Math.round(p[1]/EPS);
+	const edgeMapKey=(p,q)=>{const kp=ptKey(p),kq=ptKey(q);return kp<kq?kp+'|'+kq:kq+'|'+kp};
+	// plane normal in (x,height,y) space, same axis convention as the 3D mesh builder's V(p,y)=[p[0],y,p[1]]
+	function planeNormal(tri){
+		const a=[tri[0][0],h(tri[0]),tri[0][1]],b=[tri[1][0],h(tri[1]),tri[1][1]],c=[tri[2][0],h(tri[2]),tri[2][1]];
+		const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2],vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+		let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+		const L=Math.hypot(nx,ny,nz)||1e-12;return[nx/L,ny/L,nz/L]}
+	const map=new Map();
+	for(const tri of leaves){const n=planeNormal(tri);
+		for(let i=0;i<3;i++){const p=tri[i],q=tri[(i+1)%3],k=edgeMapKey(p,q);
+		if(!map.has(k))map.set(k,[]);
+		map.get(k).push({p,q,n})}}
+	const thresholdDeg=6,cosThresh=Math.cos(thresholdDeg*Math.PI/180);
+	const edges=[];
+	for(const arr of map.values()){
+		if(arr.length!==2)continue; // boundary edge (1) or non-manifold artifact (>2) — not an interior crease
+		const[e0,e1]=arr;
+		const dot=Math.max(-1,Math.min(1,e0.n[0]*e1.n[0]+e0.n[1]*e1.n[1]+e0.n[2]*e1.n[2]));
+		if(dot<cosThresh)edges.push([e0.p,e0.q])}
+	return edges}
+// Memoized per-roof-slab: crease detection re-triangulates+subdivides the whole footprint, which is too
+// expensive to redo on every draw() call (draw() runs on every pointermove — panning, hovering, dragging).
+// Cache key is a cheap fingerprint of only the fields the height field / triangulation actually depend on
+// (footprint points + slope) so edits elsewhere (wall moves, other slabs, pan/zoom/selection changes) never
+// invalidate it, while a genuine point drag or slope change correctly recomputes on the next draw().
+const _creaseCache=new Map();
+function roofCreaseEdgesCached(s){
+	const fp=s.slopeDeg>0?JSON.stringify(s.pts)+'|'+s.slopeDeg:'flat';
+	const c=_creaseCache.get(s.id);
+	if(c&&c.fp===fp)return c.edges;
+	const edges=roofCreaseEdges(s);
+	_creaseCache.set(s.id,{fp,edges});
+	return edges}
+// luas permukaan atap polyline yang EKSAK (jumlah luas segitiga mesh adaptif sebenarnya) — dipakai utk semua
+// atap polyline (cembung maupun cekung) di sched().
+function polyRoofSurfaceArea(s){
+	const deg=Math.max(0,Math.min(89,s.slopeDeg||0));
+	if(deg<=0)return polyArea(s.pts);
+	try{const res=adaptivePitchedRoofTriangles(s.pts,deg);
+	if(!res||!res.tris.length)return polyArea(s.pts)/Math.cos(deg*Math.PI/180);
+	let area=0;for(const t of res.tris)area+=triArea3D(t);
+	return area}
+	catch(e){return polyArea(s.pts)/Math.cos(deg*Math.PI/180)}}
+// ringkasan info untuk panel properti — tidak lagi ada satu "bubungan" tunggal per potongan cembung (tidak
+// ada lagi dekomposisi ke potongan), jadi yang dilaporkan cukup tinggi PUNCAK maksimum di seluruh permukaan.
+function polyRoofRidge(s){try{const res=adaptivePitchedRoofTriangles(s.pts,s.slopeDeg||0);
+	if(!res)return{h:0,triCount:0};
+	return{h:res.maxH,triCount:res.triCount}}
+	catch(e){return{h:0,triCount:0}}}
+const wallOf=id=>S.walls.find(w=>w.id===id);
+function curLevel(){return S.levels.find(l=>l.id===S.cur)}
+function levelElev(id){let e=0;for(const lv of S.levels){if(lv.id===id)return e;e+=lv.height}return e}
+function levelBelowOf(id){const i=S.levels.findIndex(l=>l.id===id);return i>0?S.levels[i-1]:null}
+// ---------- geometry helpers (dinding kurva) ----------
+function circleThrough(a,b,m){
+const ax=a[0],ay=a[1],bx=b[0],by=b[1],mx=m[0],my=m[1];
+const d=2*(ax*(by-my)+bx*(my-ay)+mx*(ay-by));
+if(Math.abs(d)<1e-9)return null;
+const ux=((ax*ax+ay*ay)*(by-my)+(bx*bx+by*by)*(my-ay)+(mx*mx+my*my)*(ay-by))/d;
+const uy=((ax*ax+ay*ay)*(mx-bx)+(bx*bx+by*by)*(ax-mx)+(mx*mx+my*my)*(bx-ax))/d;
+return{cx:ux,cy:uy,r:Math.hypot(ax-ux,ay-uy)}}
+function arcPoints(a,m,b,n){
+const c=circleThrough(a,m,b);if(!c)return[a,b];
+const norm=x=>{while(x<0)x+=2*Math.PI;while(x>=2*Math.PI)x-=2*Math.PI;return x};
+const ang=p=>norm(Math.atan2(p[1]-c.cy,p[0]-c.cx));
+const a0=ang(a),a1=ang(b),am=ang(m);
+const diff=norm(a1-a0),diffM=norm(am-a0);
+const ccw=diffM<=diff;
+const sweep=ccw?diff:-(2*Math.PI-diff);
+const pts=[];for(let i=0;i<=n;i++){const t=a0+sweep*i/n;pts.push([c.cx+c.r*Math.cos(t),c.cy+c.r*Math.sin(t)])}
+return pts}
+function wallPts(w){return w.curve?arcPoints(w.a,w.curve,w.b,16):[w.a,w.b]}
+function wallLen(w){const pts=wallPts(w);let s=0;for(let i=0;i<pts.length-1;i++)s+=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);return s}
+const len=wallLen;
+function polylineProj(p,pts){let best=null,acc=0;
+for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1])||1e-9,ux=(b[0]-a[0])/L,uy=(b[1]-a[1])/L;
+let d=(p[0]-a[0])*ux+(p[1]-a[1])*uy;d=Math.max(0,Math.min(L,d));
+const qx=a[0]+ux*d,qy=a[1]+uy*d,dist=Math.hypot(qx-p[0],qy-p[1]);
+if(!best||dist<best.dist)best={dist,d:acc+d,ux,uy};acc+=L}
+return best||{dist:1e9,d:0,ux:1,uy:0}}
+function proj(p,w){return polylineProj(p,wallPts(w))}
+// ---------- void-subtraction helper (void lantai) ----------
+function rectMinusHole(outer,hole){
+const ox0=outer[0],oz0=outer[1],ox1=outer[2],oz1=outer[3];
+const hx0=Math.max(hole[0],ox0),hz0=Math.max(hole[1],oz0),hx1=Math.min(hole[2],ox1),hz1=Math.min(hole[3],oz1);
+if(hx0>=hx1||hz0>=hz1)return[outer];
+const pieces=[];
+if(hz0>oz0)pieces.push([ox0,oz0,ox1,hz0]);
+if(hz1<oz1)pieces.push([ox0,hz1,ox1,oz1]);
+if(hx0>ox0)pieces.push([ox0,hz0,hx0,hz1]);
+if(hx1<ox1)pieces.push([hx1,hz0,ox1,hz1]);
+return pieces.length?pieces:[outer]}
+function slabPiecesMinusVoids(outer,levelId){
+let pieces=[outer];
+for(const vd of S.voids.filter(v=>v.levelId===levelId)){const hr=rect(vd);const next=[];for(const p of pieces)next.push(...rectMinusHole(p,hr));pieces=next}
+return pieces}
+// ---------- lapisan konstruksi ----------
+function sumLayers(layers){return layers.reduce((a,l)=>a+(+l.t||0),0)}
+function hsl2hex(h,s,l){s/=100;l/=100;const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),f=n=>l-a*Math.max(-1,Math.min(Math.min(k(n)-3,9-k(n)),1));
+const rr=Math.round(255*f(0)),gg=Math.round(255*f(8)),bb=Math.round(255*f(4));return(rr<<16)+(gg<<8)+bb}
+const layerPalette=[0xd9d4c7,0xb8b2a4,0x9c8f73,0xc9c2b3,0x8a7f68,0xe4dfce];
+function layerColor(material,idx){
+if(!material)return layerPalette[idx%layerPalette.length];
+let h=0;for(let i=0;i<material.length;i++)h=(h*31+material.charCodeAt(i))>>>0;
+return hsl2hex(h%360,32,58)}
+// ---------- tangga ----------
+function stairSteps(st){const lv=S.levels.find(l=>l.id===st.levelId),h=lv?lv.height:3,n=Math.max(2,Math.round(h/.17)),run=Math.hypot(st.b[0]-st.a[0],st.b[1]-st.a[1])/n;
+return{n,riser:h/n,run}}
+// ---------- levels UI ----------
+let armedDelLevels=new Set();
+function renderLevels(){
+const el=$('levelsList');el.innerHTML='';
+S.levels.slice().reverse().forEach(lv=>{
+const row=document.createElement('div');row.className='lvlrow';
+const active=lv.id===S.cur;
+row.innerHTML=`<button class="sm ${active?'on':''}" data-act="${lv.id}">${active?'● Aktif':'Aktifkan'}</button>`;
+const nm=document.createElement('input');nm.type='text';nm.value=lv.name;nm.onchange=()=>{lv.name=nm.value||lv.name;save();renderLevels()};
+const hl=document.createElement('label');hl.textContent='Tinggi';
+const hi=document.createElement('input');hi.type='number';hi.step='0.1';hi.min='0.5';hi.value=lv.height;
+hi.onchange=()=>{lv.height=Math.max(.5,+hi.value);commit()};
+const ev=document.createElement('span');ev.className='elev';ev.textContent='Elev '+levelElev(lv.id).toFixed(2)+' m';
+const del=document.createElement('button');del.className='sm';del.disabled=S.levels.length<=1;
+const armed=armedDelLevels.has(lv.id);del.textContent=armed?'Yakin? Klik lagi':'Hapus';if(armed){del.style.color='#c0392b';del.style.borderColor='#c0392b'}
+del.onclick=()=>{if(S.levels.length<=1)return;
+if(!armedDelLevels.has(lv.id)){armedDelLevels.add(lv.id);renderLevels();return}
+armedDelLevels.delete(lv.id);
+S.walls=S.walls.filter(w=>w.levelId!==lv.id);S.ops=S.ops.filter(o=>o.levelId!==lv.id);S.slabs=S.slabs.filter(s=>s.levelId!==lv.id);
+S.cols=S.cols.filter(c=>c.levelId!==lv.id);S.dims=S.dims.filter(d=>d.levelId!==lv.id);S.notes=S.notes.filter(nt=>nt.levelId!==lv.id);
+S.stairs=S.stairs.filter(st=>st.levelId!==lv.id);S.voids=S.voids.filter(v=>v.levelId!==lv.id);S.beams=S.beams.filter(b=>b.levelId!==lv.id);
+S.levels=S.levels.filter(l=>l.id!==lv.id);if(S.cur===lv.id)S.cur=S.levels[0].id;sel=null;commit()};
+row.append(nm,hl,hi,ev,del);
+row.querySelector('[data-act]').onclick=()=>{S.cur=lv.id;sel=null;$('gh').value=lv.height;commit()};
+el.appendChild(row)});
+$('curLvlLbl').textContent=curLevel()?curLevel().name:'';
+}
+$('addLevel').onclick=()=>{const h=+$('gh').value||3;const id=S.id++;S.levels.push({id,name:'Lantai '+(S.levels.length+1),height:h});S.cur=id;sel=null;commit()};
+function resetAll(){S.levels=[{id:1,name:'Lantai 1',height:3}];S.walls=[];S.ops=[];S.slabs=[];S.cols=[];S.dims=[];S.notes=[];S.stairs=[];S.voids=[];S.beams=[];S.section=null;S.cur=1;S.id=2;sel=null;start=null;cpts=[];$('gh').value=3;commit()}
+$('newFile').onclick=()=>{$('newFile').style.display='none';$('newFileConfirm').style.display='flex'};
+$('newFileNo').onclick=()=>{$('newFile').style.display='';$('newFileConfirm').style.display='none'};
+$('newFileYes').onclick=()=>{resetAll();$('newFile').style.display='';$('newFileConfirm').style.display='none'};
+$('ghostChk').onchange=draw;
+// ---------- 2D ----------
+const cv=$('plan'),cx=cv.getContext('2d');let sc=1;
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function curWalls(){return S.walls.filter(w=>w.levelId===S.cur)}
+function curSlabs(){return S.slabs.filter(s=>s.levelId===S.cur)}
+function curOps(){return S.ops.filter(o=>o.levelId===S.cur)}
+function curCols(){return S.cols.filter(c=>c.levelId===S.cur)}
+function curDims(){return S.dims.filter(d=>d.levelId===S.cur)}
+function curNotes(){return S.notes.filter(n=>n.levelId===S.cur)}
+function curStairs(){return S.stairs.filter(s=>s.levelId===S.cur)}
+function curVoids(){return S.voids.filter(v=>v.levelId===S.cur)}
+function curBeams(){return S.beams.filter(b=>b.levelId===S.cur)}
+function polyPath(pts){cx.beginPath();pts.forEach((p,i)=>i?cx.lineTo(p[0]*sc,p[1]*sc):cx.moveTo(p[0]*sc,p[1]*sc))}
+function baseScale(){return Math.min(cv.clientWidth/WX,cv.clientHeight/WY)}
+function layerCss(material,idx){return '#'+layerColor(material,idx).toString(16).padStart(6,'0')}
+// ---------- render-only smooth wall-joint extension (does not touch stored geometry) ----------
+function wallJoinExt(w){
+if(w.curve||w.joined===false)return{extA:0,extB:0};
+const extAt=pt=>{const g=joinGroupAt(w,pt);if(!g.length)return 0;let mt=w.t;for(const gg of g)mt=Math.max(mt,gg.w.t);return mt/2};
+return{extA:extAt(w.a),extB:extAt(w.b)}}
+function wallRenderPts(w){
+if(w.curve)return wallPts(w);
+const{extA,extB}=wallJoinExt(w);
+if(!extA&&!extB)return[w.a,w.b];
+const dx=w.b[0]-w.a[0],dy=w.b[1]-w.a[1],Ln=Math.hypot(dx,dy)||1e-9,ux=dx/Ln,uy=dy/Ln;
+return[[w.a[0]-ux*extA,w.a[1]-uy*extA],[w.b[0]+ux*extB,w.b[1]+uy*extB]]}
+function draw(){const W=cv.clientWidth,H=cv.clientHeight,r=devicePixelRatio||1;cv.width=W*r;cv.height=H*r;cx.setTransform(r,0,0,r,0,0);
+sc=baseScale()*view.zoom;cx.clearRect(0,0,W,H);cx.save();cx.translate(view.panX,view.panY);cx.strokeStyle=css('--grid');cx.lineWidth=1;
+const gx0=Math.floor((-view.panX)/sc)-1,gx1=Math.ceil((W-view.panX)/sc)+1,gy0=Math.floor((-view.panY)/sc)-1,gy1=Math.ceil((H-view.panY)/sc)+1;
+for(let x=gx0;x<=gx1;x++){cx.beginPath();cx.moveTo(x*sc,gy0*sc);cx.lineTo(x*sc,gy1*sc);cx.stroke()}
+for(let y=gy0;y<=gy1;y++){cx.beginPath();cx.moveTo(gx0*sc,y*sc);cx.lineTo(gx1*sc,y*sc);cx.stroke()}
+if($('ghostChk').checked){const lb=levelBelowOf(S.cur);if(lb){cx.strokeStyle=css('--ghost');cx.setLineDash([4,3]);cx.lineWidth=2;
+for(const w of S.walls.filter(w=>w.levelId===lb.id)){polyPath(wallPts(w));cx.stroke()}
+cx.setLineDash([])}}
+for(const s of curSlabs()){const rf=s.kind==='roof',cl=s.kind==='ceiling',sl=sel&&sel.k==='s'&&sel.id===s.id;
+cx.fillStyle=rf?'rgba(216,90,48,.12)':cl?'rgba(108,92,231,.15)':'rgba(15,110,86,.12)';cx.strokeStyle=sl?css('--sel'):(rf?'#d85a30':cl?'#6c5ce7':'#0f6e56');cx.lineWidth=sl?2.5:1.5;cx.setLineDash(rf?[8,4]:cl?[2,2]:[]);
+let swX,swY;
+if(isPolySlab(s)){polyPath(s.pts);cx.closePath();cx.fill();cx.stroke();const bb=polyBBox(s.pts);swX=bb[0]*sc+4;swY=bb[1]*sc+4}
+else{const r=rect(s),o=rf?s.over:0,X=(r[0]-o)*sc,Y=(r[1]-o)*sc,W2=(r[2]-r[0]+2*o)*sc,H2=(r[3]-r[1]+2*o)*sc;cx.fillRect(X,Y,W2,H2);cx.strokeRect(X,Y,W2,H2);swX=X+4;swY=Y+4}
+cx.setLineDash([]);
+if(s.layers&&s.layers.length){const swW=12,swH=4;
+s.layers.forEach((ly,li)=>{cx.fillStyle=layerCss(ly.material,li);cx.fillRect(swX,swY+li*(swH+1),swW,swH)});
+cx.strokeStyle=css('--fg');cx.lineWidth=1;cx.strokeRect(swX-1,swY-1,swW+2,s.layers.length*(swH+1)+1)}
+// Garis lipatan atap (bubungan/jurai/lembah) di denah: diturunkan dari mesh triangulasi adaptif yang sama
+// dipakai untuk 3D (bukan struktur data ridge-polyline eksplisit terpisah) — lihat roofCreaseEdges().
+// Digambar putus-putus tipis, warna outline atap dg opasitas rendah, dibedakan dari garis pratinjau tool.
+if(rf&&isPolySlab(s)&&(s.slopeDeg||0)>0){
+const creases=roofCreaseEdgesCached(s);
+if(creases.length){cx.save();cx.strokeStyle='rgba(216,90,48,.55)';cx.lineWidth=1;cx.setLineDash([3,3]);
+for(const chain of creases){polyPath(chain);cx.stroke()}
+cx.restore()}
+}
+}
+for(const vd of curVoids()){const r=rect(vd),sl=sel&&sel.k==='vd'&&sel.id===vd.id,X=r[0]*sc,Y=r[1]*sc,W2=(r[2]-r[0])*sc,H2=(r[3]-r[1])*sc;
+cx.save();cx.beginPath();cx.rect(X,Y,W2,H2);cx.clip();cx.strokeStyle=sl?css('--sel'):'#c0392b';cx.lineWidth=1;
+for(let d=-H2;d<W2;d+=8){cx.beginPath();cx.moveTo(X+d,Y);cx.lineTo(X+d+H2,Y+H2);cx.stroke()}
+cx.restore();cx.strokeStyle=sl?css('--sel'):'#c0392b';cx.lineWidth=sl?2.5:1.5;cx.strokeRect(X,Y,W2,H2)}
+for(const w of curWalls()){const isSel=sel&&sel.k==='w'&&sel.id===w.id;
+if(!w.curve&&w.layers&&w.layers.length&&!w.glass){
+const[a,b]=wallRenderPts(w),dx=b[0]-a[0],dy=b[1]-a[1],Ln=Math.hypot(dx,dy)||1e-9,ux=dx/Ln,uy=dy/Ln,nx=-uy,ny=ux;
+let off=-w.t/2;
+for(let li=0;li<w.layers.length;li++){const ly=w.layers[li],th=ly.t;
+const p1=[a[0]+nx*off,a[1]+ny*off],p2=[b[0]+nx*off,b[1]+ny*off],p3=[b[0]+nx*(off+th),b[1]+ny*(off+th)],p4=[a[0]+nx*(off+th),a[1]+ny*(off+th)];
+cx.fillStyle=layerCss(ly.material,li);polyPath([p1,p2,p3,p4]);cx.closePath();cx.fill();off+=th}
+cx.strokeStyle=isSel?css('--sel'):css('--wall');cx.lineWidth=isSel?2.5:1;
+const q1=[a[0]-nx*w.t/2,a[1]-ny*w.t/2],q2=[b[0]-nx*w.t/2,b[1]-ny*w.t/2],q3=[b[0]+nx*w.t/2,b[1]+ny*w.t/2],q4=[a[0]+nx*w.t/2,a[1]+ny*w.t/2];
+polyPath([q1,q2,q3,q4]);cx.closePath();cx.stroke()
+}else{
+cx.strokeStyle=isSel?css('--sel'):(w.glass?'#2f8fd8':css('--wall'));cx.lineWidth=Math.max(2,w.t*sc);cx.lineCap='butt';
+polyPath(wallRenderPts(w));cx.stroke()}}
+for(const o of curOps()){const w=wallOf(o.wall);if(!w)continue;const p=proj([0,0],w),ux=p.ux,uy=p.uy,c=[w.a[0]+ux*o.d,w.a[1]+uy*o.d];
+cx.strokeStyle=sel&&sel.k==='o'&&sel.id===o.id?css('--sel'):(o.type==='door'?'#c8781e':'#2f8fd8');cx.lineWidth=Math.max(3,w.t*sc*.6);
+cx.beginPath();cx.moveTo((c[0]-ux*o.w/2)*sc,(c[1]-uy*o.w/2)*sc);cx.lineTo((c[0]+ux*o.w/2)*sc,(c[1]+uy*o.w/2)*sc);cx.stroke();
+cx.strokeStyle=css('--card');cx.lineWidth=1.5;cx.stroke()}
+for(const c of curCols()){const sl=sel&&sel.k==='c'&&sel.id===c.id;cx.fillStyle='#6b5a3e';cx.strokeStyle=sl?css('--sel'):'#3d3223';cx.lineWidth=sl?2.5:1.5;
+cx.fillRect((c.pos[0]-c.w/2)*sc,(c.pos[1]-c.d/2)*sc,c.w*sc,c.d*sc);cx.strokeRect((c.pos[0]-c.w/2)*sc,(c.pos[1]-c.d/2)*sc,c.w*sc,c.d*sc)}
+for(const st of curStairs()){const dx=st.b[0]-st.a[0],dy=st.b[1]-st.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,nx=-uy,ny=ux,sl=sel&&sel.k==='st'&&sel.id===st.id,{n}=stairSteps(st);
+cx.strokeStyle=sl?css('--sel'):'#6b5a3e';cx.lineWidth=sl?2.5:1.5;
+const c1=[st.a[0]+nx*st.w/2,st.a[1]+ny*st.w/2],c2=[st.b[0]+nx*st.w/2,st.b[1]+ny*st.w/2],c3=[st.b[0]-nx*st.w/2,st.b[1]-ny*st.w/2],c4=[st.a[0]-nx*st.w/2,st.a[1]-ny*st.w/2];
+polyPath([c1,c2,c3,c4]);cx.closePath();cx.stroke();
+for(let i=1;i<n;i++){const t=i/n,px=st.a[0]+ux*Ln*t,py=st.a[1]+uy*Ln*t;
+cx.beginPath();cx.moveTo((px+nx*st.w/2)*sc,(py+ny*st.w/2)*sc);cx.lineTo((px-nx*st.w/2)*sc,(py-ny*st.w/2)*sc);cx.stroke()}
+cx.fillStyle=css('--fg');cx.font='10px system-ui';cx.fillText('NAIK',st.b[0]*sc+4,st.b[1]*sc-4)}
+for(const bm of curBeams()){const dx=bm.b[0]-bm.a[0],dy=bm.b[1]-bm.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,nx=-uy,ny=ux,sl=sel&&sel.k==='bm'&&sel.id===bm.id;
+cx.strokeStyle=sl?css('--sel'):'#a0522d';cx.setLineDash([5,3]);cx.lineWidth=sl?2.5:1.5;
+const c1=[bm.a[0]+nx*bm.bw/2,bm.a[1]+ny*bm.bw/2],c2=[bm.b[0]+nx*bm.bw/2,bm.b[1]+ny*bm.bw/2],c3=[bm.b[0]-nx*bm.bw/2,bm.b[1]-ny*bm.bw/2],c4=[bm.a[0]-nx*bm.bw/2,bm.a[1]-ny*bm.bw/2];
+polyPath([c1,c2,c3,c4]);cx.closePath();cx.stroke();cx.setLineDash([]);
+const mx=(bm.a[0]+bm.b[0])/2,my=(bm.a[1]+bm.b[1])/2;cx.fillStyle=css('--fg');cx.font='10px system-ui';cx.textAlign='center';cx.fillText('B',mx*sc,my*sc-4);cx.textAlign='left'}
+for(const d of curDims()){const sl=sel&&sel.k==='d'&&sel.id===d.id,dx=d.b[0]-d.a[0],dy=d.b[1]-d.a[1],Ln=Math.hypot(dx,dy)||1,nx=-dy/Ln,ny=dx/Ln,ox=nx*d.off,oy=ny*d.off,
+a2=[d.a[0]+ox,d.a[1]+oy],b2=[d.b[0]+ox,d.b[1]+oy];cx.strokeStyle=sl?css('--sel'):css('--fg');cx.lineWidth=1;cx.setLineDash([]);
+cx.beginPath();cx.moveTo(d.a[0]*sc,d.a[1]*sc);cx.lineTo(a2[0]*sc,a2[1]*sc);cx.moveTo(d.b[0]*sc,d.b[1]*sc);cx.lineTo(b2[0]*sc,b2[1]*sc);
+cx.moveTo(a2[0]*sc,a2[1]*sc);cx.lineTo(b2[0]*sc,b2[1]*sc);cx.stroke();
+const mx=(a2[0]+b2[0])/2*sc,my=(a2[1]+b2[1])/2*sc;cx.fillStyle=css('--card');const lbl=Ln.toFixed(2)+' m',tw=cx.measureText(lbl).width;
+cx.fillRect(mx-tw/2-3,my-14,tw+6,14);cx.fillStyle=css('--fg');cx.font='11px system-ui';cx.textAlign='center';cx.fillText(lbl,mx,my-3);cx.textAlign='left'}
+for(const nt of curNotes()){const sl=sel&&sel.k==='n'&&sel.id===nt.id;cx.font='12px system-ui';const tw=cx.measureText(nt.text).width;
+cx.fillStyle=sl?css('--sel'):css('--card');cx.strokeStyle=sl?css('--sel'):css('--line');cx.lineWidth=1;
+cx.fillRect(nt.pos[0]*sc,nt.pos[1]*sc-14,tw+8,18);cx.strokeRect(nt.pos[0]*sc,nt.pos[1]*sc-14,tw+8,18);
+cx.fillStyle=css('--fg');cx.fillText(nt.text,nt.pos[0]*sc+4,nt.pos[1]*sc-1)}
+if(S.section){const{a,b,flip}=S.section,dx=b[0]-a[0],dy=b[1]-a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln;let nx=uy,ny=-ux;if(flip){nx=-nx;ny=-ny}
+cx.strokeStyle='#8a2be2';cx.setLineDash([10,5]);cx.lineWidth=2;cx.beginPath();cx.moveTo(a[0]*sc,a[1]*sc);cx.lineTo(b[0]*sc,b[1]*sc);cx.stroke();cx.setLineDash([]);
+const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;cx.beginPath();cx.moveTo(mx*sc,my*sc);cx.lineTo((mx+nx*.8)*sc,(my+ny*.8)*sc);cx.stroke();
+cx.fillStyle='#8a2be2';cx.beginPath();cx.arc((mx+nx*.8)*sc,(my+ny*.8)*sc,4,0,7);cx.fill();
+cx.font='11px system-ui';cx.fillText('Potongan',mx*sc+6,my*sc-6)}
+if(start&&hover&&(tool==='floor'||tool==='roof'||tool==='ceiling'||tool==='void')){cx.strokeStyle=css('--ac');cx.setLineDash([6,4]);cx.lineWidth=2;cx.strokeRect(start[0]*sc,start[1]*sc,(hover[0]-start[0])*sc,(hover[1]-start[1])*sc);cx.setLineDash([])}
+if(start&&hover&&(tool==='wall'||tool==='dim'||tool==='section'||tool==='stair'||tool==='beam')){cx.strokeStyle=tool==='section'?'#8a2be2':css('--ac');cx.setLineDash([6,4]);cx.lineWidth=2;cx.beginPath();cx.moveTo(start[0]*sc,start[1]*sc);cx.lineTo(hover[0]*sc,hover[1]*sc);cx.stroke();cx.setLineDash([]);
+cx.fillStyle=css('--fg');cx.font='12px system-ui';cx.fillText(Math.hypot(hover[0]-start[0],hover[1]-start[1]).toFixed(2)+' m',hover[0]*sc+8,hover[1]*sc-8)}
+if(tool==='curvewall'&&hover){cx.strokeStyle=css('--ac');cx.setLineDash([6,4]);cx.lineWidth=2;
+if(cpts.length===1){cx.beginPath();cx.moveTo(cpts[0][0]*sc,cpts[0][1]*sc);cx.lineTo(hover[0]*sc,hover[1]*sc);cx.stroke()}
+else if(cpts.length===2){polyPath(arcPoints(cpts[0],hover,cpts[1],16));cx.stroke()}
+cx.setLineDash([])}
+if(tool==='roofpoly'&&cpts.length){cx.strokeStyle=css('--ac');cx.lineWidth=2;cx.setLineDash([]);
+polyPath(cpts);cx.stroke();
+if(hover){cx.setLineDash([6,4]);cx.beginPath();cx.moveTo(cpts[cpts.length-1][0]*sc,cpts[cpts.length-1][1]*sc);cx.lineTo(hover[0]*sc,hover[1]*sc);cx.stroke();cx.setLineDash([])}
+if(cpts.length>=3){const first=cpts[0],near=hover&&Math.hypot(hover[0]-first[0],hover[1]-first[1])<.3;
+cx.fillStyle=near?css('--sel'):css('--ac');cx.beginPath();cx.arc(first[0]*sc,first[1]*sc,near?7:5,0,7);cx.fill()}}
+if(hover&&(tool==='wall'||tool==='curvewall'||tool==='floor'||tool==='roof'||tool==='roofpoly'||tool==='ceiling'||tool==='void'||tool==='column'||tool==='dim'||tool==='section'||tool==='stair'||tool==='beam')){cx.fillStyle=css('--ac');cx.beginPath();cx.arc(hover[0]*sc,hover[1]*sc,4,0,7);cx.fill()}
+if(sel&&sel.k==='w'){const w=wallOf(sel.id);if(w){cx.fillStyle=css('--sel');for(const hp of[w.a,w.b]){cx.beginPath();cx.arc(hp[0]*sc,hp[1]*sc,5,0,7);cx.fill();cx.strokeStyle=css('--card');cx.lineWidth=1.5;cx.stroke()}}}
+cx.restore()}
+function pt(e){const r=cv.getBoundingClientRect();return[((e.clientX-r.left)-view.panX)/sc,((e.clientY-r.top)-view.panY)/sc]}
+function zoomAt(mx,my,factor){const sc0=baseScale()*view.zoom,wx=(mx-view.panX)/sc0,wy=(my-view.panY)/sc0;
+view.zoom=Math.max(.15,Math.min(10,view.zoom*factor));const sc1=baseScale()*view.zoom;
+view.panX=mx-wx*sc1;view.panY=my-wy*sc1;draw()}
+$('zoomIn').onclick=()=>zoomAt(cv.clientWidth/2,cv.clientHeight/2,1.25);
+$('zoomOut').onclick=()=>zoomAt(cv.clientWidth/2,cv.clientHeight/2,1/1.25);
+$('zoomReset').onclick=()=>{view={panX:0,panY:0,zoom:1};draw()};
+cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect();
+zoomAt(e.clientX-r.left,e.clientY-r.top,Math.exp(-e.deltaY*0.001))},{passive:false});
+let spaceDown=false,panDrag=null;
+addEventListener('keydown',e=>{if(e.code==='Space'&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName)){spaceDown=true;cv.style.cursor='grab';e.preventDefault()}});
+addEventListener('keyup',e=>{if(e.code==='Space'){spaceDown=false;cv.style.cursor=''}});
+function nearestWall(p,max,straightOnly){let b=null;for(const w of curWalls()){if(straightOnly&&w.curve)continue;const q=proj(p,w);if(q.dist<max&&(!b||q.dist<b.q.dist))b={w,q}}return b}
+let dragInfo=null;
+cv.addEventListener('pointermove',e=>{
+if(panDrag){view.panX=panDrag.panX+(e.clientX-panDrag.x);view.panY=panDrag.panY+(e.clientY-panDrag.y);draw();return}
+const p=pt(e);
+if(dragInfo){updateDrag(p);return}
+hover=(tool==='wall'||tool==='curvewall'||tool==='floor'||tool==='roof'||tool==='roofpoly'||tool==='ceiling'||tool==='void'||tool==='column'||tool==='dim'||tool==='section'||tool==='stair'||tool==='beam')?[snap(p[0]),snap(p[1])]:p;draw()});
+cv.addEventListener('pointerdown',e=>{
+if(e.button===1||(e.button===0&&spaceDown)){e.preventDefault();panDrag={x:e.clientX,y:e.clientY,panX:view.panX,panY:view.panY};cv.style.cursor='grabbing';return}
+const p=pt(e);
+if(tool==='wall'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const wo={id:S.id++,levelId:S.cur,a:start,b:q,h:+$('gh').value,t:+$('gt').value,glass:$('curtainChk').checked,curve:null,joined:true,layers:null,info:null};applyFamilyAttrs('wall',wo);S.walls.push(wo);start=q;commit()}}
+else if(tool==='curvewall'){const q=[snap(p[0]),snap(p[1])];
+if(cpts.length<2)cpts.push(q);
+else{const wo={id:S.id++,levelId:S.cur,a:cpts[0],b:cpts[1],curve:q,h:+$('gh').value,t:+$('gt').value,glass:$('curtainChk').checked,joined:true,layers:null,info:null};applyFamilyAttrs('wall',wo);S.walls.push(wo);sel={k:'w',id:wo.id};cpts=[];start=null;commit()}}
+else if(tool==='floor'||tool==='roof'||tool==='ceiling'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]&&q[1]!==start[1]){const rf=tool==='roof',cl=tool==='ceiling';const so={id:S.id++,levelId:S.cur,kind:tool,a:start,b:q,t:cl?.02:(rf?.15:.2),elev:cl?Math.max(2.2,curLevel().height-.3):(rf?curLevel().height:0),rise:rf?1.5:0,over:rf?.4:0,layers:null,info:null};applyFamilyAttrs(tool,so);S.slabs.push(so);sel={k:'s',id:so.id};start=null;commit()}}
+else if(tool==='roofpoly'){const q=[snap(p[0]),snap(p[1])];
+if(cpts.length>=3&&Math.hypot(q[0]-cpts[0][0],q[1]-cpts[0][1])<.3){finishRoofPoly();return}
+cpts.push(q);draw()}
+else if(tool==='void'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]&&q[1]!==start[1]){S.voids.push({id:S.id++,levelId:S.cur,a:start,b:q,info:null});sel={k:'vd',id:S.id-1};start=null;commit()}}
+else if(tool==='stair'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const sto={id:S.id++,levelId:S.cur,a:start,b:q,w:1.1,info:null};applyFamilyAttrs('stair',sto);S.stairs.push(sto);sel={k:'st',id:sto.id};start=null;commit()}}
+else if(tool==='beam'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const bo={id:S.id++,levelId:S.cur,a:start,b:q,bw:.25,bh:.4,elev:Math.max(0,curLevel().height-.4),info:null};applyFamilyAttrs('beam',bo);S.beams.push(bo);sel={k:'bm',id:bo.id};start=null;commit()}}
+else if(tool==='door'||tool==='window'){const n=nearestWall(p,.6,true);if(n){const dr=tool==='door';const oo={id:S.id++,levelId:S.cur,wall:n.w.id,d:n.q.d,type:tool,w:dr?.9:1.5,h:dr?2.1:1.2,sill:dr?0:.9,info:null};applyFamilyAttrs(tool,oo);S.ops.push(oo);sel={k:'o',id:S.ops[S.ops.length-1].id};commit()}}
+else if(tool==='column'){const q=[snap(p[0]),snap(p[1])];const co={id:S.id++,levelId:S.cur,pos:q,w:.3,d:.3,h:curLevel().height,elev:0,info:null};applyFamilyAttrs('col',co);S.cols.push(co);sel={k:'c',id:co.id};commit()}
+else if(tool==='dim'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){S.dims.push({id:S.id++,levelId:S.cur,a:start,b:q,off:.5});sel={k:'d',id:S.id-1};start=null;commit()}}
+else if(tool==='text'){S.notes.push({id:S.id++,levelId:S.cur,pos:[p[0],p[1]],text:'Keterangan'});sel={k:'n',id:S.id-1};commit()}
+else if(tool==='section'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){S.section={a:start,b:q,flip:false};start=null;save();draw();if(viewMode==='section')render3();$('viewMsg').textContent=''}}
+else{
+if(sel&&sel.k==='w'){const w=wallOf(sel.id);if(w){const da=Math.hypot(p[0]-w.a[0],p[1]-w.a[1]),db=Math.hypot(p[0]-w.b[0],p[1]-w.b[1]),HR=.28;
+if(da<HR){startDrag('endpoint',{wall:w,end:'a'},p);return}
+if(db<HR){startDrag('endpoint',{wall:w,end:'b'},p);return}}}
+const f=hitTest(p);
+if(sel&&f&&f.k===sel.k&&f.id===sel.id&&f.k!=='o'){startDrag('body',sel,p);return}
+if(sel&&f&&f.k==='o'&&f.id===sel.id){startDrag('op',{wall:wallOf(S.ops.find(o=>o.id===f.id).wall)},p);return}
+sel=f;props();draw()}});
+function finishRoofPoly(){if(cpts.length<3){cpts=[];draw();return}
+const so={id:S.id++,levelId:S.cur,kind:'roof',shape:'poly',pts:cpts.map(p=>p.slice()),t:.15,elev:curLevel().height,rise:0,slopeDeg:30,over:0,layers:null,info:null};
+applyFamilyAttrs('roof',so);S.slabs.push(so);sel={k:'s',id:so.id};cpts=[];start=null;commit()}
+cv.addEventListener('dblclick',e=>{if(tool==='roofpoly'&&cpts.length>=3)finishRoofPoly()});
+function hitTest(p){let f=null;for(const o of curOps()){const w=wallOf(o.wall),q=proj(p,w);if(q.dist<.5&&Math.abs(q.d-o.d)<o.w/2+.2)f={k:'o',id:o.id}}
+if(!f){const n=nearestWall(p,.4);if(n)f={k:'w',id:n.w.id}}
+if(!f){for(const c of curCols()){if(Math.abs(p[0]-c.pos[0])<c.w/2+.15&&Math.abs(p[1]-c.pos[1])<c.d/2+.15)f={k:'c',id:c.id}}}
+if(!f){for(const s of curSlabs()){if(pointInPoly(p,slabFootprint(s)))f={k:'s',id:s.id}}}
+if(!f){for(const st of curStairs()){const q=proj(p,{a:st.a,b:st.b});if(q.dist<st.w/2+.15)f={k:'st',id:st.id}}}
+if(!f){for(const vd of curVoids()){const r=rect(vd);if(p[0]>=r[0]&&p[0]<=r[2]&&p[1]>=r[1]&&p[1]<=r[3])f={k:'vd',id:vd.id}}}
+if(!f){for(const bm of curBeams()){const q=proj(p,{a:bm.a,b:bm.b});if(q.dist<bm.bw/2+.15)f={k:'bm',id:bm.id}}}
+if(!f){for(const nt of curNotes()){if(Math.hypot(p[0]-nt.pos[0]-.3,p[1]-nt.pos[1])<.5)f={k:'n',id:nt.id}}}
+if(!f){for(const d of curDims()){const dx=d.b[0]-d.a[0],dy=d.b[1]-d.a[1],Ln=Math.hypot(dx,dy)||1,nx=-dy/Ln,ny=dx/Ln,ox=nx*d.off,oy=ny*d.off,mid=[(d.a[0]+d.b[0])/2+ox,(d.a[1]+d.b[1])/2+oy];if(Math.hypot(p[0]-mid[0],p[1]-mid[1])<.4)f={k:'d',id:d.id}}}
+return f}
+function joinGroupAt(w,pt0){const eps=.03,res=[];if(w.joined===false)return res;
+for(const w2 of S.walls){if(w2.id===w.id||w2.levelId!==w.levelId||w2.joined===false)continue;
+if(Math.hypot(w2.a[0]-pt0[0],w2.a[1]-pt0[1])<eps)res.push({w:w2,end:'a'});
+if(Math.hypot(w2.b[0]-pt0[0],w2.b[1]-pt0[1])<eps)res.push({w:w2,end:'b'})}
+return res}
+function snapshotFor(s){if(s.k==='c'){const c=S.cols.find(c=>c.id===s.id);return{pos:c.pos.slice()}}
+if(s.k==='st'){const x=S.stairs.find(x=>x.id===s.id);return{a:x.a.slice(),b:x.b.slice()}}
+if(s.k==='vd'){const x=S.voids.find(x=>x.id===s.id);return{a:x.a.slice(),b:x.b.slice()}}
+if(s.k==='bm'){const x=S.beams.find(x=>x.id===s.id);return{a:x.a.slice(),b:x.b.slice()}}
+if(s.k==='s'){const x=S.slabs.find(x=>x.id===s.id);return isPolySlab(x)?{pts:x.pts.map(p=>p.slice())}:{a:x.a.slice(),b:x.b.slice()}}
+if(s.k==='n'){const x=S.notes.find(x=>x.id===s.id);return{pos:x.pos.slice()}}
+if(s.k==='d'){const x=S.dims.find(x=>x.id===s.id);return{a:x.a.slice(),b:x.b.slice()}}
+return null}
+function startDrag(kind,payload,downPt){const startSnap=[snap(downPt[0]),snap(downPt[1])];dragInfo={kind,payload,startSnap};
+if(kind==='endpoint'){const w=payload.wall,end=payload.end,orig=(end==='a'?w.a:w.b).slice();dragInfo.orig=orig;dragInfo.group=joinGroupAt(w,orig)}
+else if(kind==='body'){dragInfo.snap=snapshotFor(sel);
+if(sel.k==='w'){const w=wallOf(sel.id);dragInfo.origA=w.a.slice();dragInfo.origB=w.b.slice();dragInfo.origCurve=w.curve?w.curve.slice():null;dragInfo.groupA=joinGroupAt(w,w.a);dragInfo.groupB=joinGroupAt(w,w.b)}}}
+function updateDrag(p){const cur=[snap(p[0]),snap(p[1])];
+if(dragInfo.kind==='endpoint'){const{wall,end}=dragInfo.payload;wall[end]=cur;for(const g of dragInfo.group)g.w[g.end]=cur.slice()}
+else if(dragInfo.kind==='body'){const delta=[cur[0]-dragInfo.startSnap[0],cur[1]-dragInfo.startSnap[1]];applyBodyDelta(delta)}
+else if(dragInfo.kind==='op'){const o=S.ops.find(o=>o.id===sel.id),w=dragInfo.payload.wall,q=proj(p,w),Ln=len(w);o.d=Math.max(o.w/2,Math.min(Ln-o.w/2,q.d))}
+draw()}
+function applyBodyDelta(delta){
+if(sel.k==='w'){const w=wallOf(sel.id);w.a=[dragInfo.origA[0]+delta[0],dragInfo.origA[1]+delta[1]];w.b=[dragInfo.origB[0]+delta[0],dragInfo.origB[1]+delta[1]];
+if(dragInfo.origCurve)w.curve=[dragInfo.origCurve[0]+delta[0],dragInfo.origCurve[1]+delta[1]];
+for(const g of dragInfo.groupA)g.w[g.end]=[dragInfo.origA[0]+delta[0],dragInfo.origA[1]+delta[1]];
+for(const g of dragInfo.groupB)g.w[g.end]=[dragInfo.origB[0]+delta[0],dragInfo.origB[1]+delta[1]]}
+else if(sel.k==='c'){const c=S.cols.find(c=>c.id===sel.id);c.pos=[dragInfo.snap.pos[0]+delta[0],dragInfo.snap.pos[1]+delta[1]]}
+else if(sel.k==='n'){const n=S.notes.find(n=>n.id===sel.id);n.pos=[dragInfo.snap.pos[0]+delta[0],dragInfo.snap.pos[1]+delta[1]]}
+else if(sel.k==='st'){const x=S.stairs.find(x=>x.id===sel.id);x.a=[dragInfo.snap.a[0]+delta[0],dragInfo.snap.a[1]+delta[1]];x.b=[dragInfo.snap.b[0]+delta[0],dragInfo.snap.b[1]+delta[1]]}
+else if(sel.k==='vd'){const x=S.voids.find(x=>x.id===sel.id);x.a=[dragInfo.snap.a[0]+delta[0],dragInfo.snap.a[1]+delta[1]];x.b=[dragInfo.snap.b[0]+delta[0],dragInfo.snap.b[1]+delta[1]]}
+else if(sel.k==='bm'){const x=S.beams.find(x=>x.id===sel.id);x.a=[dragInfo.snap.a[0]+delta[0],dragInfo.snap.a[1]+delta[1]];x.b=[dragInfo.snap.b[0]+delta[0],dragInfo.snap.b[1]+delta[1]]}
+else if(sel.k==='s'){const x=S.slabs.find(x=>x.id===sel.id);if(isPolySlab(x))x.pts=dragInfo.snap.pts.map(p=>[p[0]+delta[0],p[1]+delta[1]]);else{x.a=[dragInfo.snap.a[0]+delta[0],dragInfo.snap.a[1]+delta[1]];x.b=[dragInfo.snap.b[0]+delta[0],dragInfo.snap.b[1]+delta[1]]}}
+else if(sel.k==='d'){const x=S.dims.find(x=>x.id===sel.id);x.a=[dragInfo.snap.a[0]+delta[0],dragInfo.snap.a[1]+delta[1]];x.b=[dragInfo.snap.b[0]+delta[0],dragInfo.snap.b[1]+delta[1]]}}
+function endDrag(){if(dragInfo){dragInfo=null;commit()}}
+function endPan(){if(panDrag){panDrag=null;cv.style.cursor=spaceDown?'grab':''}}
+cv.addEventListener('pointerup',e=>{endDrag();endPan()});addEventListener('pointerup',e=>{endDrag();endPan()});
+addEventListener('keydown',e=>{if(e.key==='Escape'){start=null;cpts=[];draw()}if(e.key==='Enter'&&tool==='roofpoly'&&cpts.length>=3)finishRoofPoly();if((e.key==='Delete'||e.key==='Backspace')&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName))del()});
+cv.addEventListener('contextmenu',e=>{e.preventDefault();start=null;cpts=[];draw()});
+function del(){if(!sel)return;if(sel.k==='s')S.slabs=S.slabs.filter(s=>s.id!==sel.id);else if(sel.k==='c')S.cols=S.cols.filter(c=>c.id!==sel.id);else if(sel.k==='d')S.dims=S.dims.filter(d=>d.id!==sel.id);else if(sel.k==='n')S.notes=S.notes.filter(nt=>nt.id!==sel.id);else if(sel.k==='st')S.stairs=S.stairs.filter(s=>s.id!==sel.id);else if(sel.k==='vd')S.voids=S.voids.filter(v=>v.id!==sel.id);else if(sel.k==='bm')S.beams=S.beams.filter(b=>b.id!==sel.id);else if(sel.k==='w'){S.walls=S.walls.filter(w=>w.id!==sel.id);S.ops=S.ops.filter(o=>o.wall!==sel.id)}else S.ops=S.ops.filter(o=>o.id!==sel.id);sel=null;commit()}
+$('del').onclick=del;$('clear').onclick=()=>{S.walls=S.walls.filter(w=>w.levelId!==S.cur);const rem=new Set(S.walls.map(w=>w.id));S.ops=S.ops.filter(o=>rem.has(o.wall));S.slabs=S.slabs.filter(s=>s.levelId!==S.cur);S.cols=S.cols.filter(c=>c.levelId!==S.cur);S.dims=S.dims.filter(d=>d.levelId!==S.cur);S.notes=S.notes.filter(nt=>nt.levelId!==S.cur);S.stairs=S.stairs.filter(s=>s.levelId!==S.cur);S.voids=S.voids.filter(v=>v.levelId!==S.cur);S.beams=S.beams.filter(b=>b.levelId!==S.cur);sel=null;start=null;cpts=[];commit()};
+document.querySelectorAll('.toolgroups [data-t]').forEach(b=>b.onclick=()=>{tool=b.dataset.t;start=null;cpts=[];document.querySelectorAll('.toolgroups [data-t]').forEach(x=>x.classList.toggle('on',x===b));hint();renderFamSel();draw()});
+function hint(){$('hint').textContent={wall:'Klik untuk mulai dinding, klik lagi untuk titik berikutnya. Klik kanan / Esc untuk berhenti.',curvewall:'Klik titik awal, klik titik akhir, lalu klik titik ke-3 tempat lengkungan harus melewati.',door:'Klik dekat dinding lurus untuk menaruh pintu.',window:'Klik dekat dinding lurus untuk menaruh jendela.',column:'Klik untuk menaruh kolom.',beam:'Klik titik awal lalu titik akhir untuk membuat balok.',floor:'Klik dua sudut untuk membuat lantai (persegi panjang).',roof:'Klik dua sudut untuk membuat atap persegi panjang. Naik = 0 berarti atap datar.',roofpoly:'Klik tiap sudut atap (bentuk bebas, tidak harus persegi). Klik dekat titik pertama, klik-dua-kali, atau tekan Enter untuk menutup bentuk (min. 3 titik). Esc untuk batal.',ceiling:'Klik dua sudut untuk membuat plafon (persegi panjang) pada level ini.',void:'Klik dua sudut untuk membuat void/bukaan pada lantai atau atap datar di level ini.',stair:'Klik titik awal (bawah) lalu titik akhir (atas) tangga. Jumlah anak tangga dihitung otomatis dari tinggi level.',dim:'Klik dua titik untuk membuat garis dimensi (jarak).',text:'Klik untuk menaruh teks keterangan, lalu edit isinya di panel properti.',section:'Klik dua titik untuk menentukan garis potongan bangunan.',select:'Klik elemen untuk memilih. Klik-tahan-geser elemen yang sudah terpilih untuk memindahkannya (dinding: tarik lingkaran di ujung untuk mengubah panjang/arah, atau tarik badan dinding untuk menggeser semuanya).'}[tool]}
+function propsHeader(k){return{w:'Dinding',o:'Bukaan',s:'Elemen',c:'Kolom',st:'Tangga',vd:'Void lantai',bm:'Balok'}[k]}
+function ensureInfo(it){if(!it.info)it.info={name:'',material:'',notes:'',custom:[]};return it.info}
+function buildInfoBox(it,header){
+ensureInfo(it);
+const pb=document.createElement('div');pb.className='propbox';
+const r1=document.createElement('div');r1.className='row';
+const l1=document.createElement('label');l1.textContent='Nama';const n1=document.createElement('input');n1.type='text';n1.value=it.info.name;n1.placeholder=header;n1.onchange=()=>{it.info.name=n1.value;save();elist()};
+const l2=document.createElement('label');l2.textContent='Material';const n2=document.createElement('input');n2.type='text';n2.value=it.info.material;n2.placeholder='mis. Beton, Bata';n2.onchange=()=>{it.info.material=n2.value;save();elist()};
+r1.append(l1,n1,l2,n2);pb.appendChild(r1);
+const r2=document.createElement('div');r2.className='row';
+const l3=document.createElement('label');l3.textContent='Catatan';const n3=document.createElement('textarea');n3.value=it.info.notes;n3.style.width='100%';n3.onchange=()=>{it.info.notes=n3.value;save()};
+r2.append(l3);pb.appendChild(r2);pb.appendChild(n3);
+const cwrap=document.createElement('div');cwrap.style.marginTop='6px';
+function renderCustom(){cwrap.innerHTML='<label>Properti kustom</label>';
+it.info.custom.forEach((c,idx)=>{const cr=document.createElement('div');cr.className='custrow';
+const ki=document.createElement('input');ki.type='text';ki.placeholder='Nama properti';ki.value=c.k;ki.onchange=()=>{c.k=ki.value;save()};
+const vi=document.createElement('input');vi.type='text';vi.placeholder='Nilai';vi.value=c.v;vi.onchange=()=>{c.v=vi.value;save();elist()};
+const rm=document.createElement('button');rm.className='sm';rm.textContent='x';rm.onclick=()=>{it.info.custom.splice(idx,1);save();renderCustom();elist()};
+cr.append(ki,vi,rm);cwrap.appendChild(cr)});
+const ab=document.createElement('button');ab.className='sm';ab.textContent='+ Tambah properti';ab.onclick=()=>{it.info.custom.push({k:'',v:''});renderCustom()};
+cwrap.appendChild(ab)}
+renderCustom();pb.appendChild(cwrap);
+return pb}
+function props(){const el=$('props');el.innerHTML='';if(!sel)return;
+if(sel.k==='n'){const nt=S.notes.find(n=>n.id===sel.id);if(!nt)return;
+const lb=document.createElement('label');lb.textContent='Teks keterangan';const ta=document.createElement('textarea');ta.style.width='100%';ta.value=nt.text;
+ta.onchange=()=>{nt.text=ta.value||'Keterangan';save();draw()};el.append(lb,ta);return}
+if(sel.k==='d'){const d=S.dims.find(x=>x.id===sel.id);if(!d)return;const Ln=Math.hypot(d.b[0]-d.a[0],d.b[1]-d.a[1]);
+const wrap=document.createElement('div');wrap.className='row';wrap.innerHTML='<label>Jarak</label><b>'+Ln.toFixed(2)+' m</b>';
+const lb=document.createElement('label');lb.textContent='Offset garis';const oi=document.createElement('input');oi.type='number';oi.step='0.05';oi.value=d.off;oi.onchange=()=>{d.off=+oi.value;save();draw()};
+wrap.append(lb,oi);el.appendChild(wrap);return}
+let it,fields;
+if(sel.k==='w'){it=wallOf(sel.id);fields=[['h','Tinggi'],['t','Tebal']]}
+else if(sel.k==='s'){it=S.slabs.find(s=>s.id===sel.id);fields=it&&it.kind==='roof'?[['t','Tebal atap (m)'],['elev','Elev dari lantai'],['rise','Naik (tinggi puncak, m)'],['over','Overhang']]:it&&it.kind==='ceiling'?[['t','Tebal'],['elev','Tinggi plafon dari lantai']]:[['t','Tebal'],['elev','Elev dari lantai']];
+if(it&&it.kind==='roof'&&isPolySlab(it))fields=fields.filter(([k])=>k!=='over'&&k!=='rise')}
+else if(sel.k==='c'){it=S.cols.find(c=>c.id===sel.id);fields=[['w','Lebar'],['d','Kedalaman'],['h','Tinggi'],['elev','Elev dari lantai']]}
+else if(sel.k==='o'){it=S.ops.find(o=>o.id===sel.id);fields=[['w','Lebar'],['h','Tinggi'],['sill','Ambang'],['d','Posisi']]}
+else if(sel.k==='st'){it=S.stairs.find(s=>s.id===sel.id);fields=[['w','Lebar']]}
+else if(sel.k==='vd'){it=S.voids.find(v=>v.id===sel.id);fields=[]}
+else if(sel.k==='bm'){it=S.beams.find(b=>b.id===sel.id);fields=[['bw','Lebar'],['bh','Tinggi'],['elev','Elev dari lantai']]}
+if(!it)return;
+if((sel.k==='w'||sel.k==='s')&&it.layers&&it.layers.length)fields=fields.filter(([k])=>k!=='t');
+const wrap=document.createElement('div');wrap.className='row';
+for(const[k,l]of fields){const lb=document.createElement('label');lb.textContent=l;const i=document.createElement('input');i.type='number';i.step='0.05';i.value=+it[k].toFixed(2);
+i.onchange=()=>{it[k]=Math.max(0,+i.value);commit(true)};wrap.append(lb,i)}
+el.appendChild(wrap);
+if(sel.k==='s'&&it.kind==='roof'){
+if(isPolySlab(it)){
+const srow=document.createElement('div');srow.className='row';
+const sl2=document.createElement('label');sl2.textContent='Kemiringan (°) — kontrol utama';
+const si=document.createElement('input');si.type='number';si.step='0.5';si.min='0';si.max='89';si.value=(+it.slopeDeg||0).toFixed(1);
+si.onchange=()=>{it.slopeDeg=Math.max(0,Math.min(89,+si.value));commit(true)};
+srow.append(sl2,si);el.appendChild(srow);
+const rg=polyRoofRidge(it);
+const note=document.createElement('p');note.style.cssText='color:var(--mut);font-size:11px;margin:2px 0 8px';
+note.textContent='Atap polyline: kemiringan ini berlaku merata di semua sisi atap (tinggi di tiap titik = tan(kemiringan) × jarak Euclidean titik itu ke tepi atap terdekat), termasuk otomatis membentuk garis lembah (valley) yang benar-benar naik di pertemuan antar sayap bangunan untuk bentuk cekung (L/T/dsb) — bukan sekadar sambungan datar. Tinggi PUNCAK tertinggi di seluruh permukaan atap ini: '+rg.h.toFixed(2)+' m. Overhang tidak didukung untuk atap polyline.';
+el.appendChild(note);
+}else{
+const halfSpan=roofHalfSpan(it),slopeDeg=riseToSlopeDeg(it.rise,halfSpan);
+const srow=document.createElement('div');srow.className='row';
+const sl2=document.createElement('label');sl2.textContent='Kemiringan (°)';
+const si=document.createElement('input');si.type='number';si.step='0.5';si.min='0';si.max='89';si.value=slopeDeg.toFixed(1);
+si.onchange=()=>{it.rise=slopeDegToRise(+si.value,roofHalfSpan(it));commit(true)};
+srow.append(sl2,si);el.appendChild(srow);
+const note=document.createElement('p');note.style.cssText='color:var(--mut);font-size:11px;margin:2px 0 8px';
+note.textContent='Kemiringan dihitung dari "Naik" dan lebar bentang terpendek atap ('+(2*halfSpan).toFixed(2)+' m). Ubah salah satu field, yang lain menyesuaikan otomatis.';
+el.appendChild(note);
+}}
+if((sel.k==='w'||sel.k==='s')&&it.layers&&it.layers.length){const tn=document.createElement('p');tn.style.cssText='color:var(--mut);font-size:12px;margin:2px 0 0';tn.textContent='Tebal total (dari lapisan): '+sumLayers(it.layers).toFixed(3)+' m';el.appendChild(tn)}
+if(sel.k==='w'){const gr=document.createElement('label');gr.className='row';gr.style.gap='4px';const gc=document.createElement('input');gc.type='checkbox';gc.checked=!!it.glass;gc.onchange=()=>{it.glass=gc.checked;commit(true)};gr.append(gc,document.createTextNode(' Curtain wall (kaca)'));el.appendChild(gr);
+const jr=document.createElement('label');jr.className='row';jr.style.gap='4px';const jc=document.createElement('input');jc.type='checkbox';jc.checked=it.joined!==false;jc.onchange=()=>{it.joined=jc.checked;save()};jr.append(jc,document.createTextNode(' Kunci sambungan ujung dinding (ikut tergeser bila dinding lain digeser)'));el.appendChild(jr);
+if(it.curve){const nn=document.createElement('p');nn.style.cssText='color:var(--mut);font-size:12px;margin:4px 0 0';nn.textContent='Dinding kurva — tidak mendukung pintu/jendela.';el.appendChild(nn)}}
+if(sel.k==='st'){const info=stairSteps(it);const sp=document.createElement('div');sp.className='row';sp.innerHTML=`<label>Anak tangga</label><b>${info.n} (tinggi ${info.riser.toFixed(3)} m, injakan ${info.run.toFixed(3)} m)</b>`;el.appendChild(sp)}
+if(sel.k==='vd'){const r=rect(it);const sp=document.createElement('div');sp.className='row';sp.innerHTML=`<label>Luas void</label><b>${((r[2]-r[0])*(r[3]-r[1])).toFixed(2)} m²</b>`;el.appendChild(sp)}
+if(sel.k==='bm'){const Ln=Math.hypot(it.b[0]-it.a[0],it.b[1]-it.a[1]);const sp=document.createElement('div');sp.className='row';sp.innerHTML=`<label>Panjang</label><b>${Ln.toFixed(2)} m</b>`;el.appendChild(sp)}
+el.appendChild(buildInfoBox(it,propsHeader(sel.k)));
+if(sel.k==='w'&&!it.glass)renderLayerEditor(it,el,'Lapisan disusun melintasi ketebalan dinding (dari sisi A ke sisi B).');
+if(sel.k==='s')renderLayerEditor(it,el,'Lapisan disusun dari permukaan atas/luar ke bawah/dalam.')}
+function renderLayerEditor(it,container,axisNote){
+const wrap=document.createElement('div');wrap.className='propbox';
+const hdr=document.createElement('label');hdr.className='row';hdr.style.gap='4px';
+const chk=document.createElement('input');chk.type='checkbox';chk.checked=!!(it.layers&&it.layers.length);
+chk.onchange=()=>{if(chk.checked)it.layers=[{name:'Lapisan 1',material:(it.info&&it.info.material)||'',t:it.t||.1}];else it.layers=null;save();draw();build();sched();elist();props()};
+hdr.append(chk,document.createTextNode(' Gunakan lapisan konstruksi berlapis'));wrap.appendChild(hdr);
+if(axisNote){const nn=document.createElement('p');nn.style.cssText='color:var(--mut);font-size:11px;margin:2px 0 6px';nn.textContent=axisNote;wrap.appendChild(nn)}
+if(it.layers&&it.layers.length){const tbl=document.createElement('div');
+it.layers.forEach((ly,idx)=>{const row=document.createElement('div');row.className='custrow';
+const ni=document.createElement('input');ni.type='text';ni.placeholder='Nama lapisan';ni.value=ly.name||'';ni.style.flex='1.2';ni.onchange=()=>{ly.name=ni.value;save()};
+const mi=document.createElement('input');mi.type='text';mi.placeholder='Material';mi.value=ly.material||'';mi.onchange=()=>{ly.material=mi.value;save();elist()};
+const ti=document.createElement('input');ti.type='number';ti.step='0.005';ti.min='0.001';ti.value=ly.t;ti.style.width='64px';
+ti.onchange=()=>{ly.t=Math.max(.001,+ti.value);it.t=sumLayers(it.layers);save();draw();build();sched();elist();props()};
+const up=document.createElement('button');up.className='sm';up.textContent='↑';up.disabled=idx===0;up.onclick=()=>{[it.layers[idx-1],it.layers[idx]]=[it.layers[idx],it.layers[idx-1]];save();draw();build();props()};
+const dn=document.createElement('button');dn.className='sm';dn.textContent='↓';dn.disabled=idx===it.layers.length-1;dn.onclick=()=>{[it.layers[idx+1],it.layers[idx]]=[it.layers[idx],it.layers[idx+1]];save();draw();build();props()};
+const rm=document.createElement('button');rm.className='sm';rm.textContent='x';rm.onclick=()=>{it.layers.splice(idx,1);if(!it.layers.length)it.layers=null;else it.t=sumLayers(it.layers);save();draw();build();sched();elist();props()};
+row.append(ni,mi,ti,up,dn,rm);tbl.appendChild(row)});
+const ab=document.createElement('button');ab.className='sm';ab.textContent='+ Tambah lapisan';ab.onclick=()=>{it.layers.push({name:'Lapisan '+(it.layers.length+1),material:'',t:.05});it.t=sumLayers(it.layers);save();draw();build();sched();elist();props()};
+tbl.appendChild(ab);wrap.appendChild(tbl);
+const tot=document.createElement('p');tot.style.cssText='color:var(--mut);font-size:12px;margin:6px 0 0';tot.textContent='Tebal total: '+sumLayers(it.layers).toFixed(3)+' m (otomatis dari lapisan)';wrap.appendChild(tot)}
+container.appendChild(wrap)}
+function elist(){const el=$('elist');
+const rows=[];
+for(const w of S.walls){const lv=S.levels.find(l=>l.id===w.levelId);rows.push([lv?lv.name:'?',(w.curve?'Dinding kurva':'Dinding')+(w.glass?' (kaca)':''),w.info&&w.info.name||'-',w.info&&w.info.material||'-'])}
+for(const o of S.ops){const lv=S.levels.find(l=>l.id===o.levelId);rows.push([lv?lv.name:'?',o.type==='door'?'Pintu':'Jendela',o.info&&o.info.name||'-',o.info&&o.info.material||'-'])}
+for(const s of S.slabs){const lv=S.levels.find(l=>l.id===s.levelId);rows.push([lv?lv.name:'?',s.kind==='roof'?'Atap':s.kind==='ceiling'?'Plafon':'Lantai',s.info&&s.info.name||'-',s.info&&s.info.material||'-'])}
+for(const c of S.cols){const lv=S.levels.find(l=>l.id===c.levelId);rows.push([lv?lv.name:'?','Kolom',c.info&&c.info.name||'-',c.info&&c.info.material||'-'])}
+for(const st of S.stairs){const lv=S.levels.find(l=>l.id===st.levelId);rows.push([lv?lv.name:'?','Tangga',st.info&&st.info.name||'-',st.info&&st.info.material||'-'])}
+for(const vd of S.voids){const lv=S.levels.find(l=>l.id===vd.levelId);rows.push([lv?lv.name:'?','Void lantai',vd.info&&vd.info.name||'-',vd.info&&vd.info.material||'-'])}
+for(const bm of S.beams){const lv=S.levels.find(l=>l.id===bm.levelId);rows.push([lv?lv.name:'?','Balok',bm.info&&bm.info.name||'-',bm.info&&bm.info.material||'-'])}
+if(!rows.length){el.innerHTML='<p style="color:var(--mut);font-size:12px">Belum ada elemen.</p>';return}
+el.innerHTML='<table><tr><th>Level</th><th>Jenis</th><th>Nama</th><th>Material</th></tr>'+rows.map(r=>'<tr><td>'+r.join('</td><td>')+'</td></tr>').join('')+'</table>'}
+// ---------- family / tipe kustom ----------
+function famKindForTool(t){return{wall:'wall',curvewall:'wall',stair:'stair',column:'col',beam:'beam',door:'door',window:'window',floor:'floor',roof:'roof',roofpoly:'roof',ceiling:'ceiling'}[t]||null}
+function famKind(sel,it){if(sel.k==='w')return'wall';if(sel.k==='st')return'stair';if(sel.k==='c')return'col';if(sel.k==='bm')return'beam';if(sel.k==='o')return it.type;if(sel.k==='s')return it.kind;return null}
+function selItem(sel){if(sel.k==='w')return wallOf(sel.id);if(sel.k==='s')return S.slabs.find(s=>s.id===sel.id);if(sel.k==='c')return S.cols.find(c=>c.id===sel.id);if(sel.k==='o')return S.ops.find(o=>o.id===sel.id);if(sel.k==='st')return S.stairs.find(s=>s.id===sel.id);if(sel.k==='bm')return S.beams.find(b=>b.id===sel.id);return null}
+const cloneLayers=l=>l?JSON.parse(JSON.stringify(l)):null;
+function extractAttrs(kind,it){switch(kind){
+case'wall':return{h:it.h,t:it.t,glass:!!it.glass,layers:cloneLayers(it.layers)};
+case'stair':return{w:it.w};
+case'col':return{w:it.w,d:it.d,h:it.h};
+case'beam':return{bw:it.bw,bh:it.bh};
+case'door':case'window':return{w:it.w,h:it.h,sill:it.sill};
+case'floor':return{t:it.t,layers:cloneLayers(it.layers)};
+case'roof':return{t:it.t,rise:it.rise,slopeDeg:it.slopeDeg,over:it.over,layers:cloneLayers(it.layers)};
+case'ceiling':return{t:it.t,elev:it.elev,layers:cloneLayers(it.layers)};
+default:return{}}}
+function curFamily(kind){const s=$('famSel');if(!s||!s.value)return null;const fam=S.families.find(f=>f.id==+s.value);return(fam&&fam.kind===kind)?fam:null}
+function applyFamilyAttrs(kind,obj){const fam=curFamily(kind);if(fam){const a=Object.assign({},fam.attrs);if(a.layers)a.layers=cloneLayers(a.layers);Object.assign(obj,a)}}
+function renderFamSel(){const s=$('famSel');if(!s)return;const kind=famKindForTool(tool),cur=s.value;
+s.innerHTML='<option value="">(tidak ada)</option>'+S.families.filter(f=>f.kind===kind).map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
+s.disabled=!kind;if([...s.options].some(o=>o.value===cur))s.value=cur}
+function renderFamilies(){const el=$('famList');if(!el)return;el.innerHTML='';
+if(!S.families.length){el.innerHTML='<p style="color:var(--mut);font-size:12px">Belum ada tipe tersimpan.</p>'}
+else{const tbl=document.createElement('table');tbl.innerHTML='<tr><th>Nama</th><th>Jenis</th><th></th></tr>';
+S.families.forEach(f=>{const tr=document.createElement('tr');
+const td1=document.createElement('td');td1.textContent=f.name;
+const td2=document.createElement('td');td2.textContent=f.kind;
+const td3=document.createElement('td');const rm=document.createElement('button');rm.className='sm';rm.textContent='Hapus';rm.onclick=()=>{S.families=S.families.filter(x=>x.id!==f.id);save();renderFamilies()};td3.appendChild(rm);
+tr.append(td1,td2,td3);tbl.appendChild(tr)});
+el.appendChild(tbl)}
+renderFamSel()}
+$('famSave').onclick=()=>{if(!sel){alert('Pilih elemen dulu di denah (mode Pilih).');return}
+const it=selItem(sel);if(!it){alert('Elemen ini tidak mendukung tipe/family.');return}
+const kind=famKind(sel,it);if(!kind){alert('Elemen ini tidak mendukung tipe/family.');return}
+const name=prompt('Nama tipe/family:',(it.info&&it.info.name)||kind);if(!name)return;
+S.families.push({id:S.id++,name,kind,attrs:extractAttrs(kind,it)});save();renderFamilies()};
+// ---------- 3D ----------
+const v3=$('v3'),ren=new THREE.WebGLRenderer({antialias:true,alpha:true});ren.localClippingEnabled=true;v3.appendChild(ren.domElement);
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,1,.1,500),ocam=new THREE.OrthographicCamera(-10,10,10,-10,.1,500),grp=new THREE.Group();scene.add(grp);
+scene.add(new THREE.HemisphereLight(0xffffff,0x888888,.75));const dl=new THREE.DirectionalLight(0xffffff,.7);dl.position.set(10,20,8);scene.add(dl);
+const gridH=new THREE.GridHelper(40,40,0x999999,0xcccccc);scene.add(gridH);
+let az=.8,el=.5,dist=26,orthoZoom=1,viewMode='3d';const tgt=new THREE.Vector3(6,2,5);
+let BB={x0:0,x1:10,z0:0,z1:8,ytop:6};
+function render3(){
+gridH.visible=viewMode==='3d';
+if(viewMode==='3d'){ren.clippingPlanes=[];cam.position.set(tgt.x+dist*Math.cos(el)*Math.sin(az),tgt.y+dist*Math.sin(el),tgt.z+dist*Math.cos(el)*Math.cos(az));cam.lookAt(tgt);ren.render(scene,cam);return}
+const w=v3.clientWidth||1,h=360,aspect=w/h,cx0=(BB.x0+BB.x1)/2,cz0=(BB.z0+BB.z1)/2,cy0=Math.max(BB.ytop,2)/2;
+let dir,lookX=cx0,lookZ=cz0;
+if(viewMode==='front')dir=[0,0,1];else if(viewMode==='back')dir=[0,0,-1];else if(viewMode==='left')dir=[-1,0,0];else if(viewMode==='right')dir=[1,0,0];
+if(viewMode==='section'){
+if(!S.section){$('viewMsg').textContent='Gunakan tool "Garis potongan" pada denah untuk menentukan garis potongan terlebih dahulu.';ren.clippingPlanes=[];ren.render(scene,ocam);return}
+$('viewMsg').textContent='Menampilkan potongan sesuai garis ungu pada denah. Klik "Balik arah potongan" untuk melihat dari sisi lain.';
+const{a,b,flip}=S.section,dx=b[0]-a[0],dy=b[1]-a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln;let nx=uy,ny=-ux;if(flip){nx=-nx;ny=-ny}
+lookX=(a[0]+b[0])/2;lookZ=(a[1]+b[1])/2;dir=[nx,0,ny];
+const plane=new THREE.Plane();plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(-nx,0,-ny),new THREE.Vector3(a[0],0,a[1]));
+ren.clippingPlanes=[plane];
+}else{$('viewMsg').textContent='';ren.clippingPlanes=[]}
+const size=Math.max(BB.x1-BB.x0,BB.z1-BB.z0,BB.ytop,4)*1.4*orthoZoom;
+ocam.left=-size*aspect/2;ocam.right=size*aspect/2;ocam.top=size/2;ocam.bottom=-size/2;ocam.near=.1;ocam.far=500;ocam.updateProjectionMatrix();
+ocam.position.set(lookX+dir[0]*60,cy0,lookZ+dir[2]*60);ocam.up.set(0,1,0);ocam.lookAt(lookX,cy0,lookZ);
+ren.render(scene,ocam)}
+function cam3(){render3()}
+function size3(){const w=v3.clientWidth,h=360;ren.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix();render3()}
+let drag=null;v3.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY]});addEventListener('pointerup',()=>drag=null);
+addEventListener('pointermove',e=>{if(!drag||viewMode!=='3d')return;az-=(e.clientX-drag[0])*.008;el=Math.max(.05,Math.min(1.5,el+(e.clientY-drag[1])*.008));drag=[e.clientX,e.clientY];render3()});
+v3.addEventListener('wheel',e=>{e.preventDefault();if(viewMode==='3d')dist=Math.max(4,Math.min(100,dist*(1+e.deltaY*.001)));else orthoZoom=Math.max(.2,Math.min(5,orthoZoom*(1+e.deltaY*.001)));render3()},{passive:false});
+document.querySelectorAll('#viewTools [data-v]').forEach(b=>b.onclick=()=>{viewMode=b.dataset.v;document.querySelectorAll('#viewTools [data-v]').forEach(x=>x.classList.toggle('on',x===b));render3()});
+$('flipSec').onclick=()=>{if(!S.section)return;S.section.flip=!S.section.flip;save();draw();render3()};
+const mat=(c,o)=>new THREE.MeshLambertMaterial(Object.assign({color:c},o||{}));
+// ---------- polygon roof meshes (atap polyline) ----------
+// Atap datar (rise===0): prisma pipih hasil extrude bentuk poligon apa adanya (overhang tidak didukung untuk atap polyline).
+function buildFlatPolyRoofMesh(pts,t,topY,colorHex){
+const th=Math.max(.01,t||.01);
+const sh=new THREE.Shape();sh.moveTo(pts[0][0],-pts[0][1]);for(let i=1;i<pts.length;i++)sh.lineTo(pts[i][0],-pts[i][1]);sh.closePath();
+const g=new THREE.ExtrudeGeometry(sh,{depth:th,bevelEnabled:false});
+const m=new THREE.Mesh(g,mat(colorHex));m.rotation.x=-Math.PI/2;m.position.set(0,topY-th,0);return m}
+// Atap miring (slopeDeg>0): dibangun dari adaptivePitchedRoofTriangles() — medan-tinggi jarak-Euclidean-ke-
+// tepi-poligon (lihat komentar di dekat definisinya), yang benar secara geometris untuk denah CEMBUNG
+// (persegi/persegi panjang/segitiga/dst, sama seperti skeleton lama) DAN untuk denah CEKUNG (L/T/cross),
+// termasuk garis lembah (valley) yang benar-benar terangkat di pertemuan antar sayap — bukan cuma sambungan
+// datar seperti pendekatan dekomposisi-cembung sebelumnya.
+function meshFromRoofTris(tris,baseY,colorHex){
+const positions=[];for(const t of tris)for(const v of t)positions.push(v[0],v[1],v[2]);
+const g=new THREE.BufferGeometry();
+g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+if(g.computeVertexNormals)g.computeVertexNormals();
+const m=new THREE.Mesh(g,mat(colorHex,{side:THREE.DoubleSide}));m.position.set(0,baseY,0);return m}
+function buildPitchedPolyRoofMesh(pts,slopeDeg,baseY,colorHex){
+let res=null;try{res=adaptivePitchedRoofTriangles(pts,slopeDeg)}catch(e){res=null}
+if(!res||!res.tris||!res.tris.length)return buildFlatPolyRoofMesh(pts,.01,baseY+.01,colorHex);
+return meshFromRoofTris(res.tris,baseY,colorHex)}
+function build(){while(grp.children.length)grp.remove(grp.children[0]);
+const mw=mat(0xd9d4c7),md=mat(0x8a5a2b),mg=mat(0x6cb4ee,{transparent:true,opacity:.45});let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+function layeredBox(w,dx,dy,dz,layers,cx0,cy0,cz0,axis){
+if(!layers||!layers.length){const b=new THREE.Mesh(new THREE.BoxGeometry(dx,dy,dz),w);b.position.set(cx0,cy0,cz0);return[b]}
+const out=[];
+if(axis==='z'){let cur=-dz/2;layers.forEach((ly,li)=>{const th=ly.t,m=mat(layerColor(ly.material,li));
+const b=new THREE.Mesh(new THREE.BoxGeometry(dx,dy,th),m);b.position.set(cx0,cy0,cz0+cur+th/2);out.push(b);cur+=th})}
+else{let cur=dy/2;layers.forEach((ly,li)=>{const th=ly.t,m=mat(layerColor(ly.material,li));
+const b=new THREE.Mesh(new THREE.BoxGeometry(dx,th,dz),m);b.position.set(cx0,cy0+cur-th/2,cz0);out.push(b);cur-=th})}
+return out}
+for(const w of S.walls){const by=levelElev(w.levelId);
+if(w.curve){const pts=arcPoints(w.a,w.curve,w.b,16),wm=w.glass?mg:mw,useLayers=!w.glass?w.layers:null;
+for(let i=0;i<pts.length-1;i++){const a2=pts[i],b2=pts[i+1],Ln2=Math.hypot(b2[0]-a2[0],b2[1]-a2[1]);if(Ln2<.001)continue;
+const ang=-Math.atan2(b2[1]-a2[1],b2[0]-a2[0]),ccx=(a2[0]+b2[0])/2,ccz=(a2[1]+b2[1])/2;
+for(const bx of layeredBox(wm,Ln2,w.h,w.t,useLayers,0,by+w.h/2,0,'z')){bx.rotation.y=ang;bx.position.x+=ccx;bx.position.z+=ccz;grp.add(bx)}
+mnx=Math.min(mnx,a2[0],b2[0]);mxx=Math.max(mxx,a2[0],b2[0]);mny=Math.min(mny,a2[1],b2[1]);mxy=Math.max(mxy,a2[1],b2[1])}
+continue}
+const L=len(w),g=new THREE.Group();g.position.set(w.a[0],by,w.a[1]);g.rotation.y=-Math.atan2(w.b[1]-w.a[1],w.b[0]-w.a[0]);
+const wm=w.glass?mg:mw,useLayers=!w.glass?w.layers:null;
+const ops=S.ops.filter(o=>o.wall===w.id).map(o=>({o,x0:Math.max(0,o.d-o.w/2),x1:Math.min(L,o.d+o.w/2)})).sort((a,b)=>a.x0-b.x0);
+const add=(x0,x1,y0,y1,m)=>{if(x1-x0<.001||y1-y0<.001)return;const b=new THREE.Mesh(new THREE.BoxGeometry(x1-x0,y1-y0,w.t),m);b.position.set((x0+x1)/2,(y0+y1)/2,0);g.add(b)};
+const addSolid=(x0,x1,y0,y1)=>{if(x1-x0<.001||y1-y0<.001)return;for(const b of layeredBox(wm,x1-x0,y1-y0,w.t,useLayers,(x0+x1)/2,(y0+y1)/2,0,'z'))g.add(b)};
+const{extA,extB}=wallJoinExt(w);
+let cur=-extA;for(const p of ops){addSolid(cur,p.x0,0,w.h);const y1=Math.min(w.h,p.o.sill+p.o.h);addSolid(p.x0,p.x1,0,p.o.sill);addSolid(p.x0,p.x1,y1,w.h);
+if(p.o.type==='window')add(p.x0,p.x1,p.o.sill,y1,mg);else add(p.x0,p.x1,p.o.sill,y1,md);
+if(p.o.type==='door'){g.children[g.children.length-1].scale.z=.25}else g.children[g.children.length-1].scale.z=.1;cur=Math.max(cur,p.x1)}
+addSolid(cur,L+extB,0,w.h);grp.add(g);
+for(const q of[w.a,w.b]){mnx=Math.min(mnx,q[0]);mny=Math.min(mny,q[1]);mxx=Math.max(mxx,q[0]);mxy=Math.max(mxy,q[1])}}
+for(const s of S.slabs){const by=levelElev(s.levelId),isRoof=s.kind==='roof',isCeil=s.kind==='ceiling';
+if(isRoof&&isPolySlab(s)){
+if((s.slopeDeg||0)>0)grp.add(buildPitchedPolyRoofMesh(s.pts,s.slopeDeg,by+s.elev,0xa8442f));
+else grp.add(buildFlatPolyRoofMesh(s.pts,s.t,by+s.elev+s.t,0xa8442f));
+continue}
+const r=rect(s),o=isRoof?s.over:0,x0=r[0]-o,x1=r[2]+o,z0=r[1]-o,z1=r[3]+o,W=x1-x0,D=z1-z0;
+if(isRoof&&s.rise>0){const ax=W>=D,B=ax?D:W,Ln=ax?W:D,sh=new THREE.Shape();sh.moveTo(-B/2,0);sh.lineTo(B/2,0);sh.lineTo(0,s.rise);sh.closePath();
+const g=new THREE.ExtrudeGeometry(sh,{depth:Ln,bevelEnabled:false});g.translate(0,0,-Ln/2);const m=new THREE.Mesh(g,mat(0xa8442f));m.position.set((x0+x1)/2,by+s.elev,(z0+z1)/2);if(ax)m.rotation.y=Math.PI/2;grp.add(m)}
+else{const pieces=slabPiecesMinusVoids([x0,z0,x1,z1],s.levelId),baseCol=isRoof?0xa8442f:isCeil?0xe4dfce:0xb8b2a4,topY=s.kind==='floor'?by+s.elev:by+s.elev+s.t;
+for(const pc of pieces){const[px0,pz0,px1,pz1]=pc,pw=px1-px0,pd=pz1-pz0;if(pw<.01||pd<.01)continue;
+if(s.layers&&s.layers.length){for(const b of layeredBox(null,pw,s.t,pd,s.layers,(px0+px1)/2,topY-s.t/2,(pz0+pz1)/2,'y'))grp.add(b)}
+else{const b=new THREE.Mesh(new THREE.BoxGeometry(pw,s.t,pd),mat(baseCol));b.position.set((px0+px1)/2,topY-s.t/2,(pz0+pz1)/2);grp.add(b)}}}}
+const mc=mat(0x6b5a3e);
+for(const c of S.cols){const by=levelElev(c.levelId);const b=new THREE.Mesh(new THREE.BoxGeometry(c.w,c.h,c.d),mc);b.position.set(c.pos[0],by+c.elev+c.h/2,c.pos[1]);grp.add(b);
+mnx=Math.min(mnx,c.pos[0]-c.w/2);mxx=Math.max(mxx,c.pos[0]+c.w/2);mny=Math.min(mny,c.pos[1]-c.d/2);mxy=Math.max(mxy,c.pos[1]+c.d/2)}
+const ms=mat(0x9c8f73);
+for(const st of S.stairs){const by=levelElev(st.levelId),{n,riser,run}=stairSteps(st),dx=st.b[0]-st.a[0],dy=st.b[1]-st.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,ang=-Math.atan2(dy,dx);
+for(let i=0;i<n;i++){const h=(i+1)*riser,x0=i*run,x1=(i+1)*run,cxp=st.a[0]+ux*(x0+x1)/2,czp=st.a[1]+uy*(x0+x1)/2;
+const g=new THREE.Mesh(new THREE.BoxGeometry(x1-x0,h,st.w),ms);g.position.set(cxp,by+h/2,czp);g.rotation.y=ang;grp.add(g)}
+mnx=Math.min(mnx,st.a[0],st.b[0])-st.w;mxx=Math.max(mxx,st.a[0],st.b[0])+st.w;mny=Math.min(mny,st.a[1],st.b[1])-st.w;mxy=Math.max(mxy,st.a[1],st.b[1])+st.w}
+const mbm=mat(0xa0522d);
+for(const bm of S.beams){const by=levelElev(bm.levelId),dx=bm.b[0]-bm.a[0],dy=bm.b[1]-bm.a[1],Ln=Math.hypot(dx,dy)||1e-6,ang=-Math.atan2(dy,dx),cxp=(bm.a[0]+bm.b[0])/2,czp=(bm.a[1]+bm.b[1])/2;
+const g=new THREE.Mesh(new THREE.BoxGeometry(Ln,bm.bh,bm.bw),mbm);g.position.set(cxp,by+bm.elev+bm.bh/2,czp);g.rotation.y=ang;grp.add(g);
+mnx=Math.min(mnx,bm.a[0],bm.b[0]);mxx=Math.max(mxx,bm.a[0],bm.b[0]);mny=Math.min(mny,bm.a[1],bm.b[1]);mxy=Math.max(mxy,bm.a[1],bm.b[1])}
+for(const s of S.slabs){if(isPolySlab(s)){for(const p of s.pts){mnx=Math.min(mnx,p[0]);mxx=Math.max(mxx,p[0]);mny=Math.min(mny,p[1]);mxy=Math.max(mxy,p[1])}}
+else{const r=rect(s);mnx=Math.min(mnx,r[0]);mxx=Math.max(mxx,r[2]);mny=Math.min(mny,r[1]);mxy=Math.max(mxy,r[3])}}
+if(S.walls.length||S.cols.length||S.slabs.length||S.stairs.length||S.beams.length){const f=new THREE.Mesh(new THREE.BoxGeometry(mxx-mnx+.4,.2,mxy-mny+.4),mat(0xb8b2a4));f.position.set((mnx+mxx)/2,-.1,(mny+mxy)/2);grp.add(f);tgt.set((mnx+mxx)/2,1.6,(mny+mxy)/2);
+BB={x0:mnx,x1:mxx,z0:mny,z1:mxy,ytop:S.levels.reduce((a,l)=>a+l.height,0)}}
+render3()}
+// ---------- schedule ----------
+function sched(){let L=0,A=0,V=0,glassA=0;for(const w of S.walls){const l=len(w);L+=l;A+=l*w.h;V+=l*w.h*w.t;if(w.glass)glassA+=l*w.h}
+let oa=0;for(const o of S.ops)oa+=o.w*o.h;const nd=S.ops.filter(o=>o.type==='door').length,nw=S.ops.length-nd;
+let fa=0,ra=0,cla=0;for(const s of S.slabs){let a;
+if(isPolySlab(s)){a=polyArea(s.pts)}else{const q=rect(s),o=s.kind==='roof'?s.over:0,W=q[2]-q[0]+2*o,D=q[3]-q[1]+2*o;a=W*D}
+if(s.kind==='floor')fa+=a;else if(s.kind==='ceiling')cla+=a;else if(isPolySlab(s)){ra+=polyRoofSurfaceArea(s)}else{const B=2*roofHalfSpan(s);ra+=s.rise>0?a*Math.sqrt(1+Math.pow(2*s.rise/B,2)):a}}
+let voidArea=0;for(const vd of S.voids){const r=rect(vd);voidArea+=(r[2]-r[0])*(r[3]-r[1])}
+let beamL=0,beamV=0;for(const bm of S.beams){const l=Math.hypot(bm.b[0]-bm.a[0],bm.b[1]-bm.a[1]);beamL+=l;beamV+=l*bm.bw*bm.bh}
+const r=(a,b,c)=>`<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`;
+let cv2=0;for(const c of S.cols)cv2+=c.w*c.d*c.h;
+$('sched').innerHTML='<table><tr><th>Item</th><th>Jumlah</th><th>Satuan</th></tr>'+r('Jumlah lantai/level',S.levels.length,'level')+r('Tinggi total bangunan',S.levels.reduce((a,l)=>a+l.height,0).toFixed(2),'m')+r('Dinding',S.walls.length,'buah')+r('Panjang total dinding',L.toFixed(2),'m')+r('Luas dinding (bruto)',A.toFixed(2),'m²')+r('Luas dinding (neto, minus bukaan)',(A-oa).toFixed(2),'m²')+r('Luas curtain wall (kaca)',glassA.toFixed(2),'m²')+r('Pintu',nd,'buah')+r('Jendela',nw,'buah')+r('Kolom',S.cols.length,'buah')+r('Volume kolom',cv2.toFixed(2),'m³')+r('Balok',S.beams.length,'buah')+r('Panjang total balok',beamL.toFixed(2),'m')+r('Volume balok',beamV.toFixed(2),'m³')+r('Tangga',S.stairs.length,'buah')+r('Luas lantai',fa.toFixed(2),'m²')+r('Luas atap (permukaan)',ra.toFixed(2),'m²')+r('Luas plafon',cla.toFixed(2),'m²')+r('Luas void lantai',voidArea.toFixed(2),'m²')+r('Tipe/family tersimpan',S.families.length,'tipe')+'</table>'}
+function commit(keep){save();renderLevels();if(!keep)props();draw();build();sched();elist();renderFamSel()}
+$('exp').onclick=()=>{$('json').value=JSON.stringify(S,null,1);$('jsons').textContent='Data model disalin ke kotak di atas.'};
+$('imp').onclick=()=>{try{const d=JSON.parse($('json').value);S.walls=d.walls||[];S.ops=d.ops||[];S.slabs=d.slabs||[];S.cols=d.cols||[];S.dims=d.dims||[];S.notes=d.notes||[];S.stairs=d.stairs||[];S.voids=d.voids||[];S.beams=d.beams||[];S.families=d.families||[];S.section=d.section||null;S.levels=d.levels;S.cur=d.cur;S.id=d.id||100;migrate();sel=null;commit();renderFamilies();$('jsons').textContent='Data berhasil dimuat.'}catch(e){$('jsons').textContent='JSON tidak valid — periksa kembali isinya.'}};
+// ---------- IFC export ----------
+function buildIFC(){
+const L=[];let n=0;
+const e=t=>{n++;L.push('#'+n+'='+t+';');return '#'+n};
+const f=v=>(+v).toFixed(4);
+const G='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
+const gid=()=>{let t=G[Math.floor(Math.random()*4)];for(let i=0;i<21;i++)t+=G[Math.floor(Math.random()*64)];return "'"+t+"'"};
+const esc=t=>"'"+String(t||'').replace(/'/g,"''").replace(/[\r\n]+/g,' ')+"'";
+const p3=(x,y,z)=>e(`IFCCARTESIANPOINT((${f(x)},${f(y)},${f(z)}))`),p2=(x,y)=>e(`IFCCARTESIANPOINT((${f(x)},${f(y)}))`),dr=(x,y,z)=>e(`IFCDIRECTION((${f(x)},${f(y)},${f(z)}))`);
+const a3=(o,z,x)=>e(`IFCAXIS2PLACEMENT3D(${p3(o[0],o[1],o[2])},${z?dr(z[0],z[1],z[2]):'$'},${x?dr(x[0],x[1],x[2]):'$'})`);
+const lp=(rel,o,z,x)=>e(`IFCLOCALPLACEMENT(${rel||'$'},${a3(o,z,x)})`);
+const ctx=e(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,${a3([0,0,0])},$)`);
+const u=[e('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)'),e('IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.)'),e('IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.)')];
+const prj=e(`IFCPROJECT(${gid()},$,'GilBIM',$,$,$,$,(${ctx}),${e(`IFCUNITASSIGNMENT((${u.join(',')}))`)})`);
+const spl=lp(null,[0,0,0]),bpl=lp(spl,[0,0,0]);
+const site=e(`IFCSITE(${gid()},$,'Site',$,$,${spl},$,$,.ELEMENT.,$,$,$,$,$)`);
+const bld=e(`IFCBUILDING(${gid()},$,'Building',$,$,${bpl},$,$,.ELEMENT.,$,$,$)`);
+e(`IFCRELAGGREGATES(${gid()},$,$,$,${prj},(${site}))`);e(`IFCRELAGGREGATES(${gid()},$,$,$,${site},(${bld}))`);
+const shape=so=>e(`IFCPRODUCTDEFINITIONSHAPE($,$,(${e(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${so}))`)}))`);
+const ext=(pf,d)=>e(`IFCEXTRUDEDAREASOLID(${pf},${a3([0,0,0])},${dr(0,0,1)},${f(d)})`);
+const rc=(xd,yd,cx,cy)=>e(`IFCRECTANGLEPROFILEDEF(.AREA.,$,${e(`IFCAXIS2PLACEMENT2D(${p2(cx,cy)},$)`)},${f(xd)},${f(yd)})`);
+const matCache={};
+function matEnt(name){if(!name)return null;if(matCache[name])return matCache[name];const m=e(`IFCMATERIAL(${esc(name)})`);matCache[name]=m;return m}
+function withLayerNote(info,layers){if(!layers||!layers.length)return info;
+const txt=layers.map(l=>`${l.name||'Lapisan'} (${l.material||'-'}, ${(+l.t).toFixed(3)}m)`).join(' | ');
+const base=info?Object.assign({},info,{custom:(info.custom||[]).slice()}):{name:'',material:'',notes:'',custom:[]};
+base.custom.push({k:'Lapisan',v:txt});return base}
+function attach(elId,info,defName){
+const nm=(info&&info.name)||defName;
+if(info&&info.material){const m=matEnt(info.material);e(`IFCRELASSOCIATESMATERIAL(${gid()},$,$,$,(${elId}),${m})`)}
+const props=[];if(info&&info.material)props.push(['Material',info.material]);if(info&&info.notes)props.push(['Catatan',info.notes]);
+if(info&&info.custom)for(const c of info.custom)if(c.k)props.push([c.k,c.v]);
+if(props.length){const pv=props.map(([k,v])=>e(`IFCPROPERTYSINGLEVALUE(${esc(k)},$,IFCLABEL(${esc(v)}),$)`));
+const pset=e(`IFCPROPERTYSET(${gid()},$,'GilBIM_Properties',$,(${pv.join(',')}))`);
+e(`IFCRELDEFINESBYPROPERTIES(${gid()},$,$,$,(${elId}),${pset})`)}
+return nm}
+const storeyOf={};
+S.levels.forEach((lv,i)=>{const p=lp(bpl,[0,0,levelElev(lv.id)]);const st=e(`IFCBUILDINGSTOREY(${gid()},$,${esc(lv.name)},$,$,${p},$,$,.ELEMENT.,${f(levelElev(lv.id))})`);storeyOf[lv.id]={id:st,placement:p,els:[]}});
+e(`IFCRELAGGREGATES(${gid()},$,$,$,${bld},(${S.levels.map(lv=>storeyOf[lv.id].id).join(',')}))`);
+S.walls.forEach((w,i)=>{const st=storeyOf[w.levelId];if(!st)return;
+const entName=w.glass?'IFCCURTAINWALL':'IFCWALL',pre=w.glass?'.NOTDEFINED.':'.STANDARD.';
+if(w.curve){const pts=arcPoints(w.a,w.curve,w.b,10);
+for(let k=0;k<pts.length-1;k++){const a2=pts[k],b2=pts[k+1],Ln2=Math.hypot(b2[0]-a2[0],b2[1]-a2[1]);if(Ln2<.01)continue;
+const ux2=(b2[0]-a2[0])/Ln2,uy2=(b2[1]-a2[1])/Ln2;
+const wp2=lp(st.placement,[a2[0],a2[1],0],[0,0,1],[ux2,uy2,0]);
+const wl2=e(`${entName}(${gid()},$,${esc('Wall '+(i+1)+' (kurva) seg'+(k+1))},$,$,${wp2},${shape(ext(rc(Ln2,w.t,Ln2/2,0),w.h))},$,${pre})`);
+attach(wl2,withLayerNote(w.info,w.layers),'Wall '+(i+1));st.els.push(wl2)}
+return}
+const Ln=len(w);if(Ln<.01)return;const ux=(w.b[0]-w.a[0])/Ln,uy=(w.b[1]-w.a[1])/Ln;
+const wp=lp(st.placement,[w.a[0],w.a[1],0],[0,0,1],[ux,uy,0]);
+const wl=e(`${entName}(${gid()},$,${esc('Wall '+(i+1))},$,$,${wp},${shape(ext(rc(Ln,w.t,Ln/2,0),w.h))},$,${pre})`);
+attach(wl,withLayerNote(w.info,w.layers),'Wall '+(i+1));st.els.push(wl);
+for(const o of S.ops.filter(o=>o.wall===w.id)){const x0=Math.max(0,o.d-o.w/2),ow=Math.min(Ln,o.d+o.w/2)-x0,oh=Math.min(o.h,w.h-o.sill);if(ow<.01||oh<.01)continue;
+const opn=e(`IFCOPENINGELEMENT(${gid()},$,'Opening',$,$,${lp(wp,[x0,0,o.sill])},${shape(ext(rc(ow,w.t+.2,ow/2,0),oh))},$,.OPENING.)`);
+e(`IFCRELVOIDSELEMENT(${gid()},$,$,$,${wl},${opn})`);
+const isD=o.type==='door';
+const el=e(`${isD?'IFCDOOR':'IFCWINDOW'}(${gid()},$,${esc(isD?'Door':'Window')},$,$,${lp(wp,[x0,0,o.sill])},${shape(ext(rc(ow,w.t*.4,ow/2,0),oh))},$,${f(oh)},${f(ow)},${isD?'.DOOR.':'.WINDOW.'},.NOTDEFINED.,$)`);
+attach(el,o.info,isD?'Door':'Window');st.els.push(el);e(`IFCRELFILLSELEMENT(${gid()},$,$,$,${opn},${el})`)}});
+S.cols.forEach((c,i)=>{const st=storeyOf[c.levelId];if(!st)return;const pl=lp(st.placement,[c.pos[0],c.pos[1],c.elev]);
+const nm='Column '+(i+1);const el=e(`IFCCOLUMN(${gid()},$,${esc(nm)},$,$,${pl},${shape(ext(rc(c.w,c.d,0,0),c.h))},$,.COLUMN.)`);attach(el,c.info,nm);st.els.push(el)});
+S.slabs.forEach((s,i)=>{const st=storeyOf[s.levelId];if(!st)return;
+const rf=s.kind==='roof',cl=s.kind==='ceiling';
+const nm=(rf?'Roof ':cl?'Ceiling ':'Floor ')+(i+1);
+if(rf&&isPolySlab(s)){
+// Atap polyline diekspor sebagai prisma datar hasil extrude poligon apa adanya (silhouette flat).
+// Ini sengaja disederhanakan: geometri hip/pinggul asli (dari adaptivePitchedRoofTriangles(), lihat 3D builder) memakai
+// jumlah segitiga yang bervariasi per bentuk, berisiko bila ditulis-tangan sebagai IFCFACETEDBREP/
+// IFCPOLYLOOP untuk kasus umum (termasuk bentuk cekung/L) dalam waktu yang tersedia — prioritas fidelitas
+// penuh diberikan ke viewport 3D (Three.js), sedangkan IFC tetap merepresentasikan footprint+ketebalan
+// yang benar (cukup untuk denah & quantity takeoff), dengan status kemiringan (.NOTDEFINED. bila miring).
+const pts=s.pts,base=pts[0];
+const rel=pts.map(pp=>[pp[0]-base[0],pp[1]-base[1]]);
+const polyPtsStr=rel.map(pp=>p2(pp[0],pp[1])).join(',');
+const poly=e(`IFCPOLYLINE((${polyPtsStr},${p2(rel[0][0],rel[0][1])}))`);
+const so=ext(e(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${poly})`),Math.max(.01,s.t));
+const pl=lp(st.placement,[base[0],base[1],s.elev]);
+const el=e(`IFCROOF(${gid()},$,${esc(nm)},$,$,${pl},${shape(so)},$,${(s.slopeDeg||0)>0?'.NOTDEFINED.':'.FLAT_ROOF.'})`);
+attach(el,withLayerNote(s.info,s.layers),nm);st.els.push(el);
+return}
+const r=rect(s),o=rf?s.over:0,x0=r[0]-o,y0=r[1]-o,W=r[2]-r[0]+2*o,D=r[3]-r[1]+2*o;
+if(rf&&s.rise>0){const ax=W>=D,B=ax?D:W,Ln=ax?W:D;
+const pl=ax?lp(st.placement,[x0,y0+D/2,s.elev],[1,0,0],[0,1,0]):lp(st.placement,[x0+W/2,y0,s.elev],[0,1,0],[-1,0,0]);
+const poly=e(`IFCPOLYLINE((${p2(-B/2,0)},${p2(B/2,0)},${p2(0,s.rise)},${p2(-B/2,0)}))`);
+const so=ext(e(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${poly})`),Ln);
+const el=e(`IFCROOF(${gid()},$,${esc(nm)},$,$,${pl},${shape(so)},$,.GABLE_ROOF.)`);attach(el,withLayerNote(s.info,s.layers),nm);st.els.push(el);
+return}
+const pre=rf?'.FLAT_ROOF.':cl?'.CEILING.':'.FLOOR.';
+const entType=cl?'IFCCOVERING':(rf?'IFCROOF':'IFCSLAB');
+const topZ=s.kind==='floor'?s.elev:s.elev+s.t;
+const pieces=slabPiecesMinusVoids([x0,y0,x0+W,y0+D],s.levelId);
+pieces.forEach((pc,pi)=>{const[px0,py0,px1,py1]=pc,pw=px1-px0,pd=py1-py0;if(pw<.01||pd<.01)return;
+const pl=lp(st.placement,[px0,py0,topZ-s.t]);
+const so=ext(rc(pw,pd,pw/2,pd/2),s.t);
+const pnm=pieces.length>1?nm+' bag.'+(pi+1):nm;
+const el=e(`${entType}(${gid()},$,${esc(pnm)},$,$,${pl},${shape(so)},$,${pre})`);attach(el,withLayerNote(s.info,s.layers),pnm);st.els.push(el)})});
+S.stairs.forEach((st2,i)=>{const stEntry=storeyOf[st2.levelId];if(!stEntry)return;
+const{n:nn,riser}=stairSteps(st2),dx=st2.b[0]-st2.a[0],dy=st2.b[1]-st2.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,totalH=nn*riser;
+const pl=lp(stEntry.placement,[st2.a[0],st2.a[1],0],[0,0,1],[ux,uy,0]);
+const nm='Stair '+(i+1);
+const el=e(`IFCSTAIR(${gid()},$,${esc(nm)},$,$,${pl},${shape(ext(rc(Ln,st2.w,Ln/2,0),totalH))},$,.NOTDEFINED.)`);
+attach(el,st2.info,nm);stEntry.els.push(el)});
+S.beams.forEach((bm,i)=>{const stEntry=storeyOf[bm.levelId];if(!stEntry)return;
+const dx=bm.b[0]-bm.a[0],dy=bm.b[1]-bm.a[1],Ln=Math.hypot(dx,dy)||0;if(Ln<.01)return;const ux=dx/Ln,uy=dy/Ln;
+const pl=lp(stEntry.placement,[bm.a[0],bm.a[1],bm.elev],[0,0,1],[ux,uy,0]);
+const nm='Beam '+(i+1);
+const el=e(`IFCBEAM(${gid()},$,${esc(nm)},$,$,${pl},${shape(ext(rc(Ln,bm.bw,Ln/2,0),bm.bh))},$,.BEAM.)`);
+attach(el,bm.info,nm);stEntry.els.push(el)});
+for(const lv of S.levels){const st=storeyOf[lv.id];if(st.els.length)e(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${gid()},$,$,$,(${st.els.join(',')}),${st.id})`)}
+return "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('gilbim.ifc','"+new Date().toISOString().slice(0,19)+"',('GilBIM'),(''),'GilBIM','GilBIM','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"+L.join('\n')+"\nENDSEC;\nEND-ISO-10303-21;\n"}
+$('ifcb').onclick=()=>{if(!S.walls.length&&!S.slabs.length){$('ifcs').textContent='Belum ada elemen untuk diekspor.';return}
+const t=buildIFC();$('ifc').value=t;
+try{const u=URL.createObjectURL(new Blob([t],{type:'application/octet-stream'})),a=document.createElement('a');a.href=u;a.download='gilbim.ifc';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500)}catch(x){}
+$('ifcs').textContent='IFC4 dibuat ('+t.split('\n').length+' baris, '+S.levels.length+' level). Jika unduhan tidak berjalan (misalnya di halaman terpublikasi), klik "Salin IFC" lalu tempel ke file bernama gilbim.ifc.'};
+$('ifcc').onclick=async()=>{if(!$('ifc').value)$('ifcb').click();const ta=$('ifc');try{await navigator.clipboard.writeText(ta.value)}catch(x){ta.select();try{document.execCommand('copy')}catch(y){}}$('ifcs').textContent='IFC disalin ke clipboard. Simpan sebagai gilbim.ifc.'};
+// ---------- DXF export (AC1015 ASCII — DWG biner tidak praktis dibuat manual) ----------
+function buildDXF(){
+const L=[];
+const add=(code,val)=>{L.push(String(code));L.push(String(val))};
+add(0,'SECTION');add(2,'HEADER');
+add(9,'$ACADVER');add(1,'AC1015');
+add(9,'$INSBASE');add(10,'0.0');add(20,'0.0');add(30,'0.0');
+add(9,'$EXTMIN');add(10,'0.0');add(20,'0.0');add(30,'0.0');
+add(9,'$EXTMAX');add(10,WX.toFixed(4));add(20,WY.toFixed(4));add(30,'0.0');
+add(0,'ENDSEC');
+const layers=[['WALLS',7],['DOORS',30],['WINDOWS',150],['COLUMNS',10],['STAIRS',40],['BEAMS',42],['FLOORS',3],['ROOFS',1],['CEILINGS',140],['VOIDS',1],['DIMS',8],['TEXT',9]];
+add(0,'SECTION');add(2,'TABLES');
+add(0,'TABLE');add(2,'LTYPE');add(70,1);
+add(0,'LTYPE');add(2,'CONTINUOUS');add(70,0);add(3,'Solid line');add(72,65);add(73,0);add(40,'0.0');
+add(0,'ENDTABLE');
+add(0,'TABLE');add(2,'LAYER');add(70,layers.length);
+for(const[nm,col] of layers){add(0,'LAYER');add(2,nm);add(70,0);add(62,col);add(6,'CONTINUOUS')}
+add(0,'ENDTABLE');
+add(0,'ENDSEC');
+add(0,'SECTION');add(2,'ENTITIES');
+const lwpoly=(layer,pts)=>{add(0,'LWPOLYLINE');add(5,'0');add(100,'AcDbEntity');add(8,layer);add(100,'AcDbPolyline');add(90,pts.length);add(70,1);for(const p of pts){add(10,(+p[0]).toFixed(4));add(20,(+p[1]).toFixed(4))}};
+const line=(layer,a,b)=>{add(0,'LINE');add(8,layer);add(10,(+a[0]).toFixed(4));add(20,(+a[1]).toFixed(4));add(30,'0.0');add(11,(+b[0]).toFixed(4));add(21,(+b[1]).toFixed(4));add(31,'0.0')};
+const text=(layer,pos,h,str)=>{add(0,'TEXT');add(8,layer);add(10,(+pos[0]).toFixed(4));add(20,(+pos[1]).toFixed(4));add(30,'0.0');add(40,h.toFixed(3));add(1,String(str||'').replace(/[\r\n]+/g,' '))};
+for(const w of S.walls){
+const pts=w.curve?arcPoints(w.a,w.curve,w.b,16):[w.a,w.b];
+const side1=[],side2=[];
+for(let i=0;i<pts.length;i++){const p=pts[i],prev=pts[i-1]||pts[i],next=pts[i+1]||pts[i];
+const dx=next[0]-prev[0],dy=next[1]-prev[1],Ln=Math.hypot(dx,dy)||1,nx=-dy/Ln,ny=dx/Ln;
+side1.push([p[0]+nx*w.t/2,p[1]+ny*w.t/2]);side2.push([p[0]-nx*w.t/2,p[1]-ny*w.t/2])}
+lwpoly('WALLS',side1.concat(side2.reverse()));
+line('WALLS',w.a,w.b)}
+for(const o of S.ops){const w=wallOf(o.wall);if(!w)continue;const pj=proj([0,0],w),ux=pj.ux,uy=pj.uy,c=[w.a[0]+ux*o.d,w.a[1]+uy*o.d];
+line(o.type==='door'?'DOORS':'WINDOWS',[c[0]-ux*o.w/2,c[1]-uy*o.w/2],[c[0]+ux*o.w/2,c[1]+uy*o.w/2])}
+for(const c of S.cols){const x0=c.pos[0]-c.w/2,y0=c.pos[1]-c.d/2,x1=c.pos[0]+c.w/2,y1=c.pos[1]+c.d/2;
+lwpoly('COLUMNS',[[x0,y0],[x1,y0],[x1,y1],[x0,y1]])}
+for(const s of S.slabs){const layer=s.kind==='roof'?'ROOFS':s.kind==='ceiling'?'CEILINGS':'FLOORS';
+if(isPolySlab(s)){lwpoly(layer,s.pts);continue}
+const r=rect(s),o2=s.kind==='roof'?s.over:0,x0=r[0]-o2,y0=r[1]-o2,x1=r[2]+o2,y1=r[3]+o2;
+lwpoly(layer,[[x0,y0],[x1,y0],[x1,y1],[x0,y1]])}
+for(const st of S.stairs){const dx=st.b[0]-st.a[0],dy=st.b[1]-st.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,nx=-uy,ny=ux;
+lwpoly('STAIRS',[[st.a[0]+nx*st.w/2,st.a[1]+ny*st.w/2],[st.b[0]+nx*st.w/2,st.b[1]+ny*st.w/2],[st.b[0]-nx*st.w/2,st.b[1]-ny*st.w/2],[st.a[0]-nx*st.w/2,st.a[1]-ny*st.w/2]])}
+for(const bm of S.beams){const dx=bm.b[0]-bm.a[0],dy=bm.b[1]-bm.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,nx=-uy,ny=ux;
+lwpoly('BEAMS',[[bm.a[0]+nx*bm.bw/2,bm.a[1]+ny*bm.bw/2],[bm.b[0]+nx*bm.bw/2,bm.b[1]+ny*bm.bw/2],[bm.b[0]-nx*bm.bw/2,bm.b[1]-ny*bm.bw/2],[bm.a[0]-nx*bm.bw/2,bm.a[1]-ny*bm.bw/2]])}
+for(const vd of S.voids){const r=rect(vd);lwpoly('VOIDS',[[r[0],r[1]],[r[2],r[1]],[r[2],r[3]],[r[0],r[3]]])}
+for(const d of S.dims)line('DIMS',d.a,d.b);
+for(const nt of S.notes)text('TEXT',nt.pos,.25,nt.text);
+add(0,'ENDSEC');
+add(0,'EOF');
+return L.reduce((s,v)=>s+v+'\n','')}
+$('dxfb').onclick=()=>{if(!S.walls.length&&!S.slabs.length){$('ifcs').textContent='Belum ada elemen untuk diekspor.';return}
+const t=buildDXF();
+try{const u=URL.createObjectURL(new Blob([t],{type:'application/dxf'})),a=document.createElement('a');a.href=u;a.download='gilbim.dxf';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500)}catch(x){}
+$('ifcs').textContent='DXF (AC1015 ASCII, kompatibel AutoCAD/Revit/BricsCAD) dibuat — DWG biner asli tidak dibuat karena format tertutup dan tidak praktis ditulis manual.'};
+addEventListener('resize',()=>{size3();draw()});
+$('gh').value=curLevel().height;
+hint();size3();draw();build();sched();props();renderLevels();elist();renderFamilies();
+</script></body></html>
