@@ -48,6 +48,9 @@ textarea{width:100%;font:12px monospace;background:var(--bg);color:var(--fg);bor
 .acc>summary::before{content:'▸';display:inline-block;transition:transform .15s;color:var(--fg)}
 .acc[open]>summary::before{transform:rotate(90deg)}
 .acc>.accbody{padding:0 8px 8px}
+#sheetPreview{width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff;display:block}
+#printSheetHolder{display:none}
+@media print{body>*:not(#printSheetHolder){display:none!important}#printSheetHolder{display:block!important}}
 </style></head><body>
 <h1>GilBIM — pemodel gedung sederhana</h1>
 
@@ -83,7 +86,7 @@ textarea{width:100%;font:12px monospace;background:var(--bg);color:var(--fg);bor
 </div>
 </div>
 <div class="bar">
-<span class="row"><button id="zoomIn" class="sm">Zoom +</button><button id="zoomOut" class="sm">Zoom -</button><button id="zoomReset" class="sm">Reset tampilan</button><label style="font-size:11px">(scroll = zoom, tombol tengah mouse / Spasi+geser = pan)</label></span>
+<span class="row"><button id="zoomIn" class="sm">Zoom +</button><button id="zoomOut" class="sm">Zoom -</button><button id="zoomReset" class="sm">Reset tampilan</button><label style="font-size:11px">(scroll = zoom, tombol tengah mouse / Spasi+geser = pan)</label><label class="row" style="gap:4px"><input type="checkbox" id="objSnapChk" checked> Snap ke objek</label></span>
 <span class="row"><label>Tinggi dinding baru</label><input type="number" id="gh" value="3" step="0.1" min="1"><label>Tebal</label><input type="number" id="gt" value="0.2" step="0.05" min="0.05"><label class="row" style="gap:4px"><input type="checkbox" id="curtainChk"> Curtain wall (kaca)</label></span>
 <span class="row"><label>Tipe/family aktif</label><select id="famSel"><option value="">(tidak ada)</option></select><button id="famSave" class="sm">💾 Simpan tipe dari elemen terpilih</button></span>
 </div>
@@ -102,16 +105,19 @@ textarea{width:100%;font:12px monospace;background:var(--bg);color:var(--fg);bor
 <details class="acc wrap"><summary>Schedule / kuantitas</summary><div class="accbody" id="sched"></div></details>
 <details class="acc wrap"><summary>Daftar elemen & informasi</summary><div class="accbody" id="elist"></div></details>
 </div>
+<details class="acc wrap"><summary>Lembar Kerja (Sheet) — title block GilBIM</summary><div class="accbody" id="sheetUI"></div></details>
+<div id="printSheetHolder"></div>
 <div class="grid">
 <div class="card"><h2>Data (JSON)</h2><textarea id="json" spellcheck="false"></textarea><div class="row" style="margin-top:6px"><button id="exp">Ekspor ke kotak</button><button id="imp">Muat dari kotak</button></div><p id="jsons" style="color:var(--mut);font-size:12px;margin:6px 0 0"></p></div>
 <div class="card"><h2>Ekspor IFC / DXF</h2><div class="row"><button id="ifcb">Ekspor IFC</button><button id="ifcc">Salin IFC</button><button id="dxfb">Ekspor DXF</button></div><p id="ifcs" style="color:var(--mut);font-size:12px;margin:6px 0"></p><textarea id="ifc" spellcheck="false" readonly placeholder="Hasil IFC muncul di sini"></textarea></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const S={levels:[{id:1,name:'Lantai 1',height:3.5},{id:2,name:'Lantai 2',height:3}],walls:[],ops:[],slabs:[],cols:[],dims:[],notes:[],stairs:[],voids:[],beams:[],families:[],section:null,id:3,cur:1};
+const S={levels:[{id:1,name:'Lantai 1',height:3.5},{id:2,name:'Lantai 2',height:3}],walls:[],ops:[],slabs:[],cols:[],dims:[],notes:[],stairs:[],voids:[],beams:[],families:[],sheets:[],section:null,id:3,cur:1};
 let tool='wall',start=null,hover=null,sel=null,cpts=[];
+let objSnapOn=true,snapMarker=null;
 let view={panX:0,panY:0,zoom:1};
-const $=id=>document.getElementById(id),snap=v=>Math.round(v*2)/2;
+const $=id=>document.getElementById(id),snap=v=>Math.round(v*1000)/1000;
 const WX=24,WY=16;
 function sample(){
 const w1=[0,0,8,0],w2=[8,0,8,6],w3=[8,6,0,6],w4=[0,6,0,0];
@@ -138,9 +144,11 @@ function migrate(){
 if(!S.levels||!S.levels.length){S.levels=[{id:1,name:'Lantai 1',height:+($('gh')?$('gh').value:3)||3}];S.cur=1;
 for(const w of S.walls)w.levelId=1;for(const o of S.ops)o.levelId=1;for(const s of S.slabs)s.levelId=1;}
 if(!S.cols)S.cols=[];if(!S.dims)S.dims=[];if(!S.notes)S.notes=[];if(S.section===undefined)S.section=null;
-if(!S.stairs)S.stairs=[];if(!S.voids)S.voids=[];if(!S.families)S.families=[];if(!S.beams)S.beams=[];
+if(!S.stairs)S.stairs=[];if(!S.voids)S.voids=[];if(!S.families)S.families=[];if(!S.beams)S.beams=[];if(!S.sheets)S.sheets=[];
+for(const sh of S.sheets){if(!sh.paper)sh.paper='A3';if(!sh.orientation)sh.orientation='landscape';if(sh.project===undefined)sh.project='';if(sh.title===undefined)sh.title='';if(sh.drawnBy===undefined)sh.drawnBy='';if(!sh.date)sh.date=new Date().toISOString().slice(0,10);if(sh.sheetNo===undefined)sh.sheetNo='';if(sh.scaleLabel===undefined)sh.scaleLabel='';if(!Array.isArray(sh.viewports))sh.viewports=[];
+for(const vp of sh.viewports){if(!vp.kind)vp.kind='plan';if(vp.levelId===undefined)vp.levelId=S.cur;if(vp.caption===undefined)vp.caption='';if(vp.scaleLabel===undefined)vp.scaleLabel='';if(vp.x===undefined)vp.x=10;if(vp.y===undefined)vp.y=10;if(vp.w===undefined)vp.w=100;if(vp.h===undefined)vp.h=80}}
 for(const w of S.walls){if(w.info===undefined)w.info=null;if(w.glass===undefined)w.glass=false;if(w.curve===undefined)w.curve=null;if(w.joined===undefined)w.joined=true;if(w.layers===undefined)w.layers=null}
-for(const o of S.ops)if(o.info===undefined)o.info=null;
+for(const o of S.ops){if(o.info===undefined)o.info=null;if(o.frameT===undefined)o.frameT=.05}
 for(const s of S.slabs){if(s.info===undefined)s.info=null;if(s.layers===undefined)s.layers=null;if(s.kind==='ceiling'&&s.over===undefined)s.over=0;
 if(s.shape==='poly'&&(!Array.isArray(s.pts)||s.pts.length<3))s.shape=undefined;
 if(s.over===undefined)s.over=0;if(s.rise===undefined)s.rise=0;
@@ -242,17 +250,42 @@ function adaptivePitchedRoofTriangles(inputPts,slopeDeg){
 	base=base.filter((p,i)=>{const q=base[(i-1+base.length)%base.length];return Math.hypot(p[0]-q[0],p[1]-q[1])>1e-6});
 	if(base.length<3)return null;
 	if(polySignedArea(base)<0)base=base.slice().reverse();
-	const diag=Math.max(1e-6,polyBBoxDiag(base)),tol=Math.max(.004,.004*diag),maxDepth=9;
+	const diag=Math.max(1e-6,polyBBoxDiag(base)),tol=Math.max(.004,.004*diag),probeDepthCap=9,uniformDepthCap=7;
 	const h=p=>polyRoofHeightAt(p,base,slope);
 	let seed=null;try{seed=triangulateEarClip(base)}catch(e){seed=null}
 	if(!seed||!seed.length){seed=[];for(let i=1;i<base.length-1;i++)seed.push([base[0],base[i],base[i+1]])}
-	const leaves=[];
-	function subdivide(tri,depth){
+	// PASS 1 (probe-only): run the old fully-independent adaptive error check, but only to discover the
+	// deepest recursion any region of the roof actually needs — the resulting adaptively-stopped triangles
+	// themselves are thrown away (not used for geometry), specifically because letting different seed
+	// triangles/branches stop at different depths is exactly what produces T-junctions (hanging nodes) along
+	// a shared ridge/hip/valley edge, which is what made the old crease lines come out as disconnected dashes.
+	let maxDepthNeeded=0;
+	function probe(tri,depth){
 		const a=tri[0],b=tri[1],c=tri[2];
 		const cxp=(a[0]+b[0]+c[0])/3,cyp=(a[1]+b[1]+c[1])/3;
 		const hTrue=h([cxp,cyp]),hLin=(h(a)+h(b)+h(c))/3;
-		if(depth>=maxDepth||Math.abs(hTrue-hLin)<=tol){leaves.push(tri);return}
+		if(depth>=probeDepthCap||Math.abs(hTrue-hLin)<=tol){if(depth>maxDepthNeeded)maxDepthNeeded=depth;return}
 		const mab=[(a[0]+b[0])/2,(a[1]+b[1])/2],mbc=[(b[0]+c[0])/2,(b[1]+c[1])/2],mca=[(c[0]+a[0])/2,(c[1]+a[1])/2];
+		probe([a,mab,mca],depth+1);probe([mab,b,mbc],depth+1);
+		probe([mca,mbc,c],depth+1);probe([mab,mbc,mca],depth+1)}
+	for(const tri of seed)probe(tri,0);
+	const uniformDepth=Math.min(maxDepthNeeded,uniformDepthCap);
+	// PASS 2 (uniform, conforming): quadrisect EVERY seed triangle to exactly `uniformDepth`, unconditionally
+	// — no early stop. Every leaf triangle inside a seed triangle therefore lands at the same depth as its
+	// neighbors, so shared edges subdivide identically on both sides: no hanging nodes, a crack-free mesh.
+	// Midpoints are computed through a canonical, coordinate-keyed cache (`midpoint`) rather than recomputed
+	// per-triangle, so two different seed triangles that happen to share an edge (e.g. the diagonal splitting
+	// a rectangle into two ear-clip triangles) still produce EXACTLY the same subdivision points from both
+	// sides — not just numerically close, but the identical cached array reference/value.
+	const midCache=new Map();
+	const midKey=(a,b)=>{const ax=Math.round(a[0]*1e6),ay=Math.round(a[1]*1e6),bx=Math.round(b[0]*1e6),by=Math.round(b[1]*1e6);
+		return(ax<bx||(ax===bx&&ay<=by))?(ax+'_'+ay+'|'+bx+'_'+by):(bx+'_'+by+'|'+ax+'_'+ay)};
+	const midpoint=(a,b)=>{const k=midKey(a,b);let m=midCache.get(k);if(!m){m=[(a[0]+b[0])/2,(a[1]+b[1])/2];midCache.set(k,m)}return m};
+	const leaves=[];
+	function subdivide(tri,depth){
+		if(depth>=uniformDepth){leaves.push(tri);return}
+		const a=tri[0],b=tri[1],c=tri[2];
+		const mab=midpoint(a,b),mbc=midpoint(b,c),mca=midpoint(c,a);
 		subdivide([a,mab,mca],depth+1);subdivide([mab,b,mbc],depth+1);
 		subdivide([mca,mbc,c],depth+1);subdivide([mab,mbc,mca],depth+1)}
 	for(const tri of seed)subdivide(tri,0);
@@ -280,12 +313,14 @@ function adaptivePitchedRoofTriangles(inputPts,slopeDeg){
 // Empirically (verified on a rectangular hip roof) there's a clean angular gap between genuinely co-planar
 // mesh edges (~0°) and real fold edges (14–60°, matching the roof's own pitch geometry) — so a small
 // threshold reliably separates real folds from flat-region floating-point noise with no false positives.
-// The adaptive mesh represents each true fold line as many small crease-flagged mesh edges (subdivision
-// gets finer near a fold, and neighboring triangles can subdivide to different depths — a T-junction
-// situation — which keeps a single continuous hip/ridge from ever being one long uninterrupted polyline
-// candidate in the raw mesh), so rather than chase a brittle graph-merge to force them into a handful of
-// perfectly clean polylines, every crease edge is returned as-is: a short, thin, dashed 2D segment. Drawn
-// together they visually trace the ridge/hip/valley structure just as clearly as one continuous line would.
+// Since the mesh is now built by uniform-depth-per-seed-triangle refinement (see adaptivePitchedRoofTriangles
+// above), it is conforming/crack-free: two triangles sharing a fold edge always share it EXACTLY (same two
+// endpoint coordinates), with no T-junctions. That means the interior crease edges found below can now be
+// chained end-to-end into a small number of continuous polylines instead of being drawn as a pile of short,
+// disconnected dashes — see chainCreaseEdges() further down, which walks the crease-edge graph and merges
+// consecutive edges that meet at a plain pass-through node (exactly 2 crease edges touching it), while
+// correctly starting a new chain at any true junction (a hip/valley meeting point, where 3+ crease edges
+// meet) rather than forcing a branch into an artificial single path.
 function roofCreaseEdges(s){
 	const deg=Math.max(0,Math.min(89,s.slopeDeg||0));if(deg<=0)return[];
 	let res=null;try{res=adaptivePitchedRoofTriangles(s.pts,deg)}catch(e){res=null}
@@ -311,7 +346,64 @@ function roofCreaseEdges(s){
 		const[e0,e1]=arr;
 		const dot=Math.max(-1,Math.min(1,e0.n[0]*e1.n[0]+e0.n[1]*e1.n[1]+e0.n[2]*e1.n[2]));
 		if(dot<cosThresh)edges.push([e0.p,e0.q])}
-	return edges}
+	const chains=chainCreaseEdges(edges);
+	// Drop leftover short "staircase spur" chains (see chainCreaseEdges' comment): after greedy straight-line
+	// tracing, the genuine ridge/hip/valley lines come out as the small number of long chains, while what is
+	// left over from the diagonal-vs-grid staircase artifact is many very short (often single-edge) chains
+	// near those same lines. A short-chain length filter — scaled to the roof's own size — keeps the real
+	// lines and discards that noise, which is what actually makes the 2D overlay read as a handful of clean
+	// lines instead of a scatter of dashes.
+	const chainLen=c=>{let l=0;for(let i=0;i<c.length-1;i++)l+=Math.hypot(c[i+1][0]-c[i][0],c[i+1][1]-c[i][1]);return l};
+	// Empirically (verified on rectangular & L-shaped roofs) there's a clean length gap between the handful of
+	// long chains that trace a genuine ridge/hip/valley and the many short staircase-noise leftovers — the
+	// noise tops out around 10-15% of the longest chain's length, so a threshold RELATIVE to the longest chain
+	// (rather than a fixed absolute size) adapts correctly across small and large roofs alike.
+	let maxLen=0;for(const c of chains){const l=chainLen(c);if(l>maxLen)maxLen=l}
+	const minLen=Math.max(.3,.2*maxLen);
+	return chains.filter(c=>chainLen(c)>=minLen)}
+// Walks a set of disconnected 2-point crease edges and merges consecutive ones into longer polylines.
+// Note: even on a fully-conforming mesh, a single straight ridge/hip/valley line that runs DIAGONALLY across
+// the (axis-aligned) quadrisected triangle grid still gets flagged, edge by edge, as a "staircase": a whole
+// swath of mesh vertices near the true line — not only the exact vertices sitting on it — end up with some
+// dihedral-angle jump, so a plain "only continue through a degree-2 node" rule (chaining edges that share an
+// endpoint used by exactly 2 crease edges) still leaves the result badly fragmented, because most nodes in
+// that swath have 3+ incident crease edges. So instead of gating purely on node degree, each chain is grown
+// by GREEDILY FOLLOWING THE STRAIGHTEST AVAILABLE CONTINUATION at every node: among the unused crease edges
+// touching the current end point, the one whose direction deviates least from the incoming direction is
+// picked, and the chain stops only when no remaining candidate continues within ~65° of straight-ahead (a
+// genuine sharp turn / true dead end) — this reliably threads a long, nearly-straight line through the messy
+// swath of a staircased fold while still stopping at real branch points (e.g. a hip meeting the ridge at a
+// sharp angle). Left-over short spurs not picked by any straight run end up as their own short chains, which
+// is an accepted, documented limitation (see report) rather than a bug.
+function chainCreaseEdges(edges){
+	const EPS=1e-6,ptKey=p=>Math.round(p[0]/EPS)+','+Math.round(p[1]/EPS);
+	const nodeEdges=new Map();
+	const addNE=(k,rec)=>{let a=nodeEdges.get(k);if(!a){a=[];nodeEdges.set(k,a)}a.push(rec)};
+	edges.forEach((e,i)=>{const k0=ptKey(e[0]),k1=ptKey(e[1]);
+		addNE(k0,{i,pt:e[0],other:e[1],otherKey:k1});
+		addNE(k1,{i,pt:e[1],other:e[0],otherKey:k0})});
+	const used=new Array(edges.length).fill(false);
+	const dirOf=(from,to)=>{const dx=to[0]-from[0],dy=to[1]-from[1],L=Math.hypot(dx,dy)||1e-9;return[dx/L,dy/L]};
+	const straightDotMin=Math.cos(65*Math.PI/180);
+	function stepStraight(curKey,prevDir){
+		const cands=(nodeEdges.get(curKey)||[]).filter(r=>!used[r.i]);
+		if(!cands.length)return null;
+		let best=null,bestDot=-2;
+		for(const r of cands){const d=dirOf(r.pt,r.other),dot=d[0]*prevDir[0]+d[1]*prevDir[1];if(dot>bestDot){bestDot=dot;best=r}}
+		if(bestDot<straightDotMin)return null;
+		return best}
+	const chains=[];
+	for(let i=0;i<edges.length;i++){
+		if(used[i])continue;
+		used[i]=true;
+		const e=edges[i],fwd=[],bwd=[];
+		let curKey=ptKey(e[1]),prevDir=dirOf(e[0],e[1]);
+		while(true){const r=stepStraight(curKey,prevDir);if(!r)break;used[r.i]=true;fwd.push(r.other);prevDir=dirOf(r.pt,r.other);curKey=r.otherKey}
+		curKey=ptKey(e[0]);prevDir=dirOf(e[1],e[0]);
+		while(true){const r=stepStraight(curKey,prevDir);if(!r)break;used[r.i]=true;bwd.push(r.other);prevDir=dirOf(r.pt,r.other);curKey=r.otherKey}
+		bwd.reverse();
+		chains.push(bwd.concat([e[0],e[1]],fwd))}
+	return chains}
 // Memoized per-roof-slab: crease detection re-triangulates+subdivides the whole footprint, which is too
 // expensive to redo on every draw() call (draw() runs on every pointermove — panning, hovering, dragging).
 // Cache key is a cheap fingerprint of only the fields the height field / triangulation actually depend on
@@ -370,8 +462,8 @@ function polylineProj(p,pts){let best=null,acc=0;
 for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1])||1e-9,ux=(b[0]-a[0])/L,uy=(b[1]-a[1])/L;
 let d=(p[0]-a[0])*ux+(p[1]-a[1])*uy;d=Math.max(0,Math.min(L,d));
 const qx=a[0]+ux*d,qy=a[1]+uy*d,dist=Math.hypot(qx-p[0],qy-p[1]);
-if(!best||dist<best.dist)best={dist,d:acc+d,ux,uy};acc+=L}
-return best||{dist:1e9,d:0,ux:1,uy:0}}
+if(!best||dist<best.dist)best={dist,d:acc+d,ux,uy,x:qx,y:qy};acc+=L}
+return best||{dist:1e9,d:0,ux:1,uy:0,x:p[0],y:p[1]}}
 function proj(p,w){return polylineProj(p,wallPts(w))}
 // ---------- void-subtraction helper (void lantai) ----------
 function rectMinusHole(outer,hole){
@@ -434,7 +526,7 @@ $('newFileNo').onclick=()=>{$('newFile').style.display='';$('newFileConfirm').st
 $('newFileYes').onclick=()=>{resetAll();$('newFile').style.display='';$('newFileConfirm').style.display='none'};
 $('ghostChk').onchange=draw;
 // ---------- 2D ----------
-const cv=$('plan'),cx=cv.getContext('2d');let sc=1;
+let cv=$('plan'),cx=cv.getContext('2d');let sc=1;
 function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
 function curWalls(){return S.walls.filter(w=>w.levelId===S.cur)}
 function curSlabs(){return S.slabs.filter(s=>s.levelId===S.cur)}
@@ -503,10 +595,15 @@ polyPath([q1,q2,q3,q4]);cx.closePath();cx.stroke()
 }else{
 cx.strokeStyle=isSel?css('--sel'):(w.glass?'#2f8fd8':css('--wall'));cx.lineWidth=Math.max(2,w.t*sc);cx.lineCap='butt';
 polyPath(wallRenderPts(w));cx.stroke()}}
-for(const o of curOps()){const w=wallOf(o.wall);if(!w)continue;const p=proj([0,0],w),ux=p.ux,uy=p.uy,c=[w.a[0]+ux*o.d,w.a[1]+uy*o.d];
-cx.strokeStyle=sel&&sel.k==='o'&&sel.id===o.id?css('--sel'):(o.type==='door'?'#c8781e':'#2f8fd8');cx.lineWidth=Math.max(3,w.t*sc*.6);
+for(const o of curOps()){const w=wallOf(o.wall);if(!w)continue;const isSelOp=sel&&sel.k==='o'&&sel.id===o.id;const p=proj([0,0],w),ux=p.ux,uy=p.uy,c=[w.a[0]+ux*o.d,w.a[1]+uy*o.d];
+cx.strokeStyle=isSelOp?css('--sel'):(o.type==='door'?'#c8781e':'#2f8fd8');cx.lineWidth=Math.max(3,w.t*sc*.6);
 cx.beginPath();cx.moveTo((c[0]-ux*o.w/2)*sc,(c[1]-uy*o.w/2)*sc);cx.lineTo((c[0]+ux*o.w/2)*sc,(c[1]+uy*o.w/2)*sc);cx.stroke();
-cx.strokeStyle=css('--card');cx.lineWidth=1.5;cx.stroke()}
+cx.strokeStyle=css('--card');cx.lineWidth=1.5;cx.stroke();
+// --- kusen (frame): tanda perpendikular pendek di kedua sisi (jamb) bukaan ---
+const nx=-uy,ny=ux,ft=o.frameT||.05,halfT=w.t/2+ft;
+cx.strokeStyle=isSelOp?css('--sel'):'#5a3d20';cx.lineWidth=1.5;
+for(const sgn of[-1,1]){const jx=c[0]+ux*o.w/2*sgn,jy=c[1]+uy*o.w/2*sgn;
+cx.beginPath();cx.moveTo((jx-nx*halfT)*sc,(jy-ny*halfT)*sc);cx.lineTo((jx+nx*halfT)*sc,(jy+ny*halfT)*sc);cx.stroke()}}
 for(const c of curCols()){const sl=sel&&sel.k==='c'&&sel.id===c.id;cx.fillStyle='#6b5a3e';cx.strokeStyle=sl?css('--sel'):'#3d3223';cx.lineWidth=sl?2.5:1.5;
 cx.fillRect((c.pos[0]-c.w/2)*sc,(c.pos[1]-c.d/2)*sc,c.w*sc,c.d*sc);cx.strokeRect((c.pos[0]-c.w/2)*sc,(c.pos[1]-c.d/2)*sc,c.w*sc,c.d*sc)}
 for(const st of curStairs()){const dx=st.b[0]-st.a[0],dy=st.b[1]-st.a[1],Ln=Math.hypot(dx,dy)||1,ux=dx/Ln,uy=dy/Ln,nx=-uy,ny=ux,sl=sel&&sel.k==='st'&&sel.id===st.id,{n}=stairSteps(st);
@@ -549,6 +646,12 @@ if(hover){cx.setLineDash([6,4]);cx.beginPath();cx.moveTo(cpts[cpts.length-1][0]*
 if(cpts.length>=3){const first=cpts[0],near=hover&&Math.hypot(hover[0]-first[0],hover[1]-first[1])<.3;
 cx.fillStyle=near?css('--sel'):css('--ac');cx.beginPath();cx.arc(first[0]*sc,first[1]*sc,near?7:5,0,7);cx.fill()}}
 if(hover&&(tool==='wall'||tool==='curvewall'||tool==='floor'||tool==='roof'||tool==='roofpoly'||tool==='ceiling'||tool==='void'||tool==='column'||tool==='dim'||tool==='section'||tool==='stair'||tool==='beam')){cx.fillStyle=css('--ac');cx.beginPath();cx.arc(hover[0]*sc,hover[1]*sc,4,0,7);cx.fill()}
+if(snapMarker&&objSnapOn){const mx=snapMarker.p[0]*sc,my=snapMarker.p[1]*sc;cx.save();cx.strokeStyle='#e6b800';cx.lineWidth=2;cx.setLineDash([]);
+if(snapMarker.type==='endpoint'){cx.strokeRect(mx-5,my-5,10,10)}
+else if(snapMarker.type==='midpoint'){cx.beginPath();cx.moveTo(mx,my-6);cx.lineTo(mx+6,my+5);cx.lineTo(mx-6,my+5);cx.closePath();cx.stroke()}
+else if(snapMarker.type==='intersection'){cx.beginPath();cx.moveTo(mx-5,my-5);cx.lineTo(mx+5,my+5);cx.moveTo(mx+5,my-5);cx.lineTo(mx-5,my+5);cx.stroke()}
+else{cx.beginPath();cx.arc(mx,my,5,0,7);cx.stroke()}
+cx.restore()}
 if(sel&&sel.k==='w'){const w=wallOf(sel.id);if(w){cx.fillStyle=css('--sel');for(const hp of[w.a,w.b]){cx.beginPath();cx.arc(hp[0]*sc,hp[1]*sc,5,0,7);cx.fill();cx.strokeStyle=css('--card');cx.lineWidth=1.5;cx.stroke()}}}
 cx.restore()}
 function pt(e){const r=cv.getBoundingClientRect();return[((e.clientX-r.left)-view.panX)/sc,((e.clientY-r.top)-view.panY)/sc]}
@@ -564,31 +667,85 @@ let spaceDown=false,panDrag=null;
 addEventListener('keydown',e=>{if(e.code==='Space'&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName)){spaceDown=true;cv.style.cursor='grab';e.preventDefault()}});
 addEventListener('keyup',e=>{if(e.code==='Space'){spaceDown=false;cv.style.cursor=''}});
 function nearestWall(p,max,straightOnly){let b=null;for(const w of curWalls()){if(straightOnly&&w.curve)continue;const q=proj(p,w);if(q.dist<max&&(!b||q.dist<b.q.dist))b={w,q}}return b}
+// ---------- object snap (osnap) ----------
+// Candidate points: wall endpoints/curve-control/midpoints, other elements' endpoints/midpoints/corners,
+// column centers, perpendicular "on-line" foot points along any wall under the cursor, and straight-wall
+// line/line intersections. Selection is by SCREEN-pixel tolerance (converted to world units via `sc`), so it
+// stays visually consistent at any zoom. Falls back to plain grid snap() when nothing is within tolerance or
+// when the toggle is off.
+function polylineMidpoint(pts){let total=0;for(let i=0;i<pts.length-1;i++)total+=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);
+let half=total/2,acc=0;for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1])||1e-9;
+if(acc+L>=half){const t=(half-acc)/L;return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]}acc+=L}
+return pts[pts.length-1]||[0,0]}
+function lineIntersect(a1,a2,b1,b2){
+const d1x=a2[0]-a1[0],d1y=a2[1]-a1[1],d2x=b2[0]-b1[0],d2y=b2[1]-b1[1];
+const denom=d1x*d2y-d1y*d2x;if(Math.abs(denom)<1e-9)return null;
+const t=((b1[0]-a1[0])*d2y-(b1[1]-a1[1])*d2x)/denom,u=((b1[0]-a1[0])*d1y-(b1[1]-a1[1])*d1x)/denom;
+return{p:[a1[0]+d1x*t,a1[1]+d1y*t],t,u,L1:Math.hypot(d1x,d1y),L2:Math.hypot(d2x,d2y)}}
+function wallLineIntersections(){const res=[],ws=curWalls().filter(w=>!w.curve),ext=.5;
+for(let i=0;i<ws.length;i++)for(let j=i+1;j<ws.length;j++){const ix=lineIntersect(ws[i].a,ws[i].b,ws[j].a,ws[j].b);if(!ix)continue;
+const s1=ix.t*ix.L1,s2=ix.u*ix.L2;
+if(s1>=-ext&&s1<=ix.L1+ext&&s2>=-ext&&s2<=ix.L2+ext)res.push({p:ix.p,type:'intersection'})}
+return res}
+function gatherSnapCandidates(){const pts=[];
+const addP=(p,type)=>{if(p)pts.push({p:[p[0],p[1]],type})};
+for(const w of curWalls()){const wp=wallPts(w);addP(w.a,'endpoint');addP(w.b,'endpoint');if(w.curve)addP(w.curve,'endpoint');
+pts.push({p:polylineMidpoint(wp),type:'midpoint'})}
+for(const st of curStairs()){addP(st.a,'endpoint');addP(st.b,'endpoint');pts.push({p:[(st.a[0]+st.b[0])/2,(st.a[1]+st.b[1])/2],type:'midpoint'})}
+for(const bm of curBeams()){addP(bm.a,'endpoint');addP(bm.b,'endpoint');pts.push({p:[(bm.a[0]+bm.b[0])/2,(bm.a[1]+bm.b[1])/2],type:'midpoint'})}
+for(const d of curDims()){addP(d.a,'endpoint');addP(d.b,'endpoint')}
+for(const s of curSlabs())for(const p of slabFootprint(s))addP(p,'endpoint');
+for(const vd of curVoids()){const r=rect(vd);addP([r[0],r[1]],'endpoint');addP([r[2],r[1]],'endpoint');addP([r[2],r[3]],'endpoint');addP([r[0],r[3]],'endpoint')}
+for(const c of curCols())addP(c.pos,'endpoint');
+return pts}
+// Priority: endpoint/midpoint/intersection ("special" points) win over the generic on-line foot whenever both
+// are within tolerance — otherwise a cursor merely resting anywhere along a wall's line would always out-score
+// a nearby corner/midpoint (the foot point is, by definition, at least as close as any other point on that
+// same line), which would make corner/midpoint snapping nearly unreachable. On-line is only used as a fallback
+// when no special candidate is in range, matching how CAD osnap stacks (endpoint/midpoint/intersection first,
+// nearest-on-object last).
+function nearestSnapCandidate(p){
+if(!objSnapOn)return null;
+const tol=10/sc;
+const special=gatherSnapCandidates().concat(wallLineIntersections());
+let best=null;
+for(const c of special){const dist=Math.hypot(c.p[0]-p[0],c.p[1]-p[1]);if(dist<=tol&&(!best||dist<best.dist))best={p:c.p,type:c.type,dist}}
+if(best)return best;
+let bestOnline=null;
+for(const w of curWalls()){const q=proj(p,w);if(q.dist<=tol&&(!bestOnline||q.dist<bestOnline.dist))bestOnline={p:[q.x,q.y],type:'online',dist:q.dist}}
+return bestOnline}
+function resolvePoint(p){
+const c=nearestSnapCandidate(p);
+if(c){snapMarker={p:c.p,type:c.type};return[c.p[0],c.p[1]]}
+snapMarker=null;
+return[snap(p[0]),snap(p[1])]}
+$('objSnapChk').onchange=()=>{objSnapOn=$('objSnapChk').checked;snapMarker=null;draw()};
 let dragInfo=null;
 cv.addEventListener('pointermove',e=>{
 if(panDrag){view.panX=panDrag.panX+(e.clientX-panDrag.x);view.panY=panDrag.panY+(e.clientY-panDrag.y);draw();return}
 const p=pt(e);
 if(dragInfo){updateDrag(p);return}
-hover=(tool==='wall'||tool==='curvewall'||tool==='floor'||tool==='roof'||tool==='roofpoly'||tool==='ceiling'||tool==='void'||tool==='column'||tool==='dim'||tool==='section'||tool==='stair'||tool==='beam')?[snap(p[0]),snap(p[1])]:p;draw()});
+if(tool==='wall'||tool==='curvewall'||tool==='floor'||tool==='roof'||tool==='roofpoly'||tool==='ceiling'||tool==='void'||tool==='column'||tool==='dim'||tool==='section'||tool==='stair'||tool==='beam')hover=resolvePoint(p);else{hover=p;snapMarker=null}
+draw()});
 cv.addEventListener('pointerdown',e=>{
 if(e.button===1||(e.button===0&&spaceDown)){e.preventDefault();panDrag={x:e.clientX,y:e.clientY,panX:view.panX,panY:view.panY};cv.style.cursor='grabbing';return}
 const p=pt(e);
-if(tool==='wall'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const wo={id:S.id++,levelId:S.cur,a:start,b:q,h:+$('gh').value,t:+$('gt').value,glass:$('curtainChk').checked,curve:null,joined:true,layers:null,info:null};applyFamilyAttrs('wall',wo);S.walls.push(wo);start=q;commit()}}
-else if(tool==='curvewall'){const q=[snap(p[0]),snap(p[1])];
+if(tool==='wall'){const q=resolvePoint(p);if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const wo={id:S.id++,levelId:S.cur,a:start,b:q,h:+$('gh').value,t:+$('gt').value,glass:$('curtainChk').checked,curve:null,joined:true,layers:null,info:null};applyFamilyAttrs('wall',wo);S.walls.push(wo);start=q;commit()}}
+else if(tool==='curvewall'){const q=resolvePoint(p);
 if(cpts.length<2)cpts.push(q);
 else{const wo={id:S.id++,levelId:S.cur,a:cpts[0],b:cpts[1],curve:q,h:+$('gh').value,t:+$('gt').value,glass:$('curtainChk').checked,joined:true,layers:null,info:null};applyFamilyAttrs('wall',wo);S.walls.push(wo);sel={k:'w',id:wo.id};cpts=[];start=null;commit()}}
-else if(tool==='floor'||tool==='roof'||tool==='ceiling'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]&&q[1]!==start[1]){const rf=tool==='roof',cl=tool==='ceiling';const so={id:S.id++,levelId:S.cur,kind:tool,a:start,b:q,t:cl?.02:(rf?.15:.2),elev:cl?Math.max(2.2,curLevel().height-.3):(rf?curLevel().height:0),rise:rf?1.5:0,over:rf?.4:0,layers:null,info:null};applyFamilyAttrs(tool,so);S.slabs.push(so);sel={k:'s',id:so.id};start=null;commit()}}
-else if(tool==='roofpoly'){const q=[snap(p[0]),snap(p[1])];
+else if(tool==='floor'||tool==='roof'||tool==='ceiling'){const q=resolvePoint(p);if(!start)start=q;else if(q[0]!==start[0]&&q[1]!==start[1]){const rf=tool==='roof',cl=tool==='ceiling';const so={id:S.id++,levelId:S.cur,kind:tool,a:start,b:q,t:cl?.02:(rf?.15:.2),elev:cl?Math.max(2.2,curLevel().height-.3):(rf?curLevel().height:0),rise:rf?1.5:0,over:rf?.4:0,layers:null,info:null};applyFamilyAttrs(tool,so);S.slabs.push(so);sel={k:'s',id:so.id};start=null;commit()}}
+else if(tool==='roofpoly'){const q=resolvePoint(p);
 if(cpts.length>=3&&Math.hypot(q[0]-cpts[0][0],q[1]-cpts[0][1])<.3){finishRoofPoly();return}
 cpts.push(q);draw()}
-else if(tool==='void'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]&&q[1]!==start[1]){S.voids.push({id:S.id++,levelId:S.cur,a:start,b:q,info:null});sel={k:'vd',id:S.id-1};start=null;commit()}}
-else if(tool==='stair'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const sto={id:S.id++,levelId:S.cur,a:start,b:q,w:1.1,info:null};applyFamilyAttrs('stair',sto);S.stairs.push(sto);sel={k:'st',id:sto.id};start=null;commit()}}
-else if(tool==='beam'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const bo={id:S.id++,levelId:S.cur,a:start,b:q,bw:.25,bh:.4,elev:Math.max(0,curLevel().height-.4),info:null};applyFamilyAttrs('beam',bo);S.beams.push(bo);sel={k:'bm',id:bo.id};start=null;commit()}}
-else if(tool==='door'||tool==='window'){const n=nearestWall(p,.6,true);if(n){const dr=tool==='door';const oo={id:S.id++,levelId:S.cur,wall:n.w.id,d:n.q.d,type:tool,w:dr?.9:1.5,h:dr?2.1:1.2,sill:dr?0:.9,info:null};applyFamilyAttrs(tool,oo);S.ops.push(oo);sel={k:'o',id:S.ops[S.ops.length-1].id};commit()}}
-else if(tool==='column'){const q=[snap(p[0]),snap(p[1])];const co={id:S.id++,levelId:S.cur,pos:q,w:.3,d:.3,h:curLevel().height,elev:0,info:null};applyFamilyAttrs('col',co);S.cols.push(co);sel={k:'c',id:co.id};commit()}
-else if(tool==='dim'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){S.dims.push({id:S.id++,levelId:S.cur,a:start,b:q,off:.5});sel={k:'d',id:S.id-1};start=null;commit()}}
+else if(tool==='void'){const q=resolvePoint(p);if(!start)start=q;else if(q[0]!==start[0]&&q[1]!==start[1]){S.voids.push({id:S.id++,levelId:S.cur,a:start,b:q,info:null});sel={k:'vd',id:S.id-1};start=null;commit()}}
+else if(tool==='stair'){const q=resolvePoint(p);if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const sto={id:S.id++,levelId:S.cur,a:start,b:q,w:1.1,info:null};applyFamilyAttrs('stair',sto);S.stairs.push(sto);sel={k:'st',id:sto.id};start=null;commit()}}
+else if(tool==='beam'){const q=resolvePoint(p);if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){const bo={id:S.id++,levelId:S.cur,a:start,b:q,bw:.25,bh:.4,elev:Math.max(0,curLevel().height-.4),info:null};applyFamilyAttrs('beam',bo);S.beams.push(bo);sel={k:'bm',id:bo.id};start=null;commit()}}
+else if(tool==='door'||tool==='window'){const n=nearestWall(p,.6,true);if(n){const dr=tool==='door';const oo={id:S.id++,levelId:S.cur,wall:n.w.id,d:n.q.d,type:tool,w:dr?.9:1.5,h:dr?2.1:1.2,sill:dr?0:.9,frameT:.05,info:null};applyFamilyAttrs(tool,oo);S.ops.push(oo);sel={k:'o',id:S.ops[S.ops.length-1].id};commit()}}
+else if(tool==='column'){const q=resolvePoint(p);const co={id:S.id++,levelId:S.cur,pos:q,w:.3,d:.3,h:curLevel().height,elev:0,info:null};applyFamilyAttrs('col',co);S.cols.push(co);sel={k:'c',id:co.id};commit()}
+else if(tool==='dim'){const q=resolvePoint(p);if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){S.dims.push({id:S.id++,levelId:S.cur,a:start,b:q,off:.5});sel={k:'d',id:S.id-1};start=null;commit()}}
 else if(tool==='text'){S.notes.push({id:S.id++,levelId:S.cur,pos:[p[0],p[1]],text:'Keterangan'});sel={k:'n',id:S.id-1};commit()}
-else if(tool==='section'){const q=[snap(p[0]),snap(p[1])];if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){S.section={a:start,b:q,flip:false};start=null;save();draw();if(viewMode==='section')render3();$('viewMsg').textContent=''}}
+else if(tool==='section'){const q=resolvePoint(p);if(!start)start=q;else if(q[0]!==start[0]||q[1]!==start[1]){S.section={a:start,b:q,flip:false};start=null;save();draw();if(viewMode==='section')render3();$('viewMsg').textContent=''}}
 else{
 if(sel&&sel.k==='w'){const w=wallOf(sel.id);if(w){const da=Math.hypot(p[0]-w.a[0],p[1]-w.a[1]),db=Math.hypot(p[0]-w.b[0],p[1]-w.b[1]),HR=.28;
 if(da<HR){startDrag('endpoint',{wall:w,end:'a'},p);return}
@@ -652,7 +809,7 @@ addEventListener('keydown',e=>{if(e.key==='Escape'){start=null;cpts=[];draw()}if
 cv.addEventListener('contextmenu',e=>{e.preventDefault();start=null;cpts=[];draw()});
 function del(){if(!sel)return;if(sel.k==='s')S.slabs=S.slabs.filter(s=>s.id!==sel.id);else if(sel.k==='c')S.cols=S.cols.filter(c=>c.id!==sel.id);else if(sel.k==='d')S.dims=S.dims.filter(d=>d.id!==sel.id);else if(sel.k==='n')S.notes=S.notes.filter(nt=>nt.id!==sel.id);else if(sel.k==='st')S.stairs=S.stairs.filter(s=>s.id!==sel.id);else if(sel.k==='vd')S.voids=S.voids.filter(v=>v.id!==sel.id);else if(sel.k==='bm')S.beams=S.beams.filter(b=>b.id!==sel.id);else if(sel.k==='w'){S.walls=S.walls.filter(w=>w.id!==sel.id);S.ops=S.ops.filter(o=>o.wall!==sel.id)}else S.ops=S.ops.filter(o=>o.id!==sel.id);sel=null;commit()}
 $('del').onclick=del;$('clear').onclick=()=>{S.walls=S.walls.filter(w=>w.levelId!==S.cur);const rem=new Set(S.walls.map(w=>w.id));S.ops=S.ops.filter(o=>rem.has(o.wall));S.slabs=S.slabs.filter(s=>s.levelId!==S.cur);S.cols=S.cols.filter(c=>c.levelId!==S.cur);S.dims=S.dims.filter(d=>d.levelId!==S.cur);S.notes=S.notes.filter(nt=>nt.levelId!==S.cur);S.stairs=S.stairs.filter(s=>s.levelId!==S.cur);S.voids=S.voids.filter(v=>v.levelId!==S.cur);S.beams=S.beams.filter(b=>b.levelId!==S.cur);sel=null;start=null;cpts=[];commit()};
-document.querySelectorAll('.toolgroups [data-t]').forEach(b=>b.onclick=()=>{tool=b.dataset.t;start=null;cpts=[];document.querySelectorAll('.toolgroups [data-t]').forEach(x=>x.classList.toggle('on',x===b));hint();renderFamSel();draw()});
+document.querySelectorAll('.toolgroups [data-t]').forEach(b=>b.onclick=()=>{tool=b.dataset.t;start=null;cpts=[];snapMarker=null;document.querySelectorAll('.toolgroups [data-t]').forEach(x=>x.classList.toggle('on',x===b));hint();renderFamSel();draw()});
 function hint(){$('hint').textContent={wall:'Klik untuk mulai dinding, klik lagi untuk titik berikutnya. Klik kanan / Esc untuk berhenti.',curvewall:'Klik titik awal, klik titik akhir, lalu klik titik ke-3 tempat lengkungan harus melewati.',door:'Klik dekat dinding lurus untuk menaruh pintu.',window:'Klik dekat dinding lurus untuk menaruh jendela.',column:'Klik untuk menaruh kolom.',beam:'Klik titik awal lalu titik akhir untuk membuat balok.',floor:'Klik dua sudut untuk membuat lantai (persegi panjang).',roof:'Klik dua sudut untuk membuat atap persegi panjang. Naik = 0 berarti atap datar.',roofpoly:'Klik tiap sudut atap (bentuk bebas, tidak harus persegi). Klik dekat titik pertama, klik-dua-kali, atau tekan Enter untuk menutup bentuk (min. 3 titik). Esc untuk batal.',ceiling:'Klik dua sudut untuk membuat plafon (persegi panjang) pada level ini.',void:'Klik dua sudut untuk membuat void/bukaan pada lantai atau atap datar di level ini.',stair:'Klik titik awal (bawah) lalu titik akhir (atas) tangga. Jumlah anak tangga dihitung otomatis dari tinggi level.',dim:'Klik dua titik untuk membuat garis dimensi (jarak).',text:'Klik untuk menaruh teks keterangan, lalu edit isinya di panel properti.',section:'Klik dua titik untuk menentukan garis potongan bangunan.',select:'Klik elemen untuk memilih. Klik-tahan-geser elemen yang sudah terpilih untuk memindahkannya (dinding: tarik lingkaran di ujung untuk mengubah panjang/arah, atau tarik badan dinding untuk menggeser semuanya).'}[tool]}
 function propsHeader(k){return{w:'Dinding',o:'Bukaan',s:'Elemen',c:'Kolom',st:'Tangga',vd:'Void lantai',bm:'Balok'}[k]}
 function ensureInfo(it){if(!it.info)it.info={name:'',material:'',notes:'',custom:[]};return it.info}
@@ -690,7 +847,7 @@ if(sel.k==='w'){it=wallOf(sel.id);fields=[['h','Tinggi'],['t','Tebal']]}
 else if(sel.k==='s'){it=S.slabs.find(s=>s.id===sel.id);fields=it&&it.kind==='roof'?[['t','Tebal atap (m)'],['elev','Elev dari lantai'],['rise','Naik (tinggi puncak, m)'],['over','Overhang']]:it&&it.kind==='ceiling'?[['t','Tebal'],['elev','Tinggi plafon dari lantai']]:[['t','Tebal'],['elev','Elev dari lantai']];
 if(it&&it.kind==='roof'&&isPolySlab(it))fields=fields.filter(([k])=>k!=='over'&&k!=='rise')}
 else if(sel.k==='c'){it=S.cols.find(c=>c.id===sel.id);fields=[['w','Lebar'],['d','Kedalaman'],['h','Tinggi'],['elev','Elev dari lantai']]}
-else if(sel.k==='o'){it=S.ops.find(o=>o.id===sel.id);fields=[['w','Lebar'],['h','Tinggi'],['sill','Ambang'],['d','Posisi']]}
+else if(sel.k==='o'){it=S.ops.find(o=>o.id===sel.id);fields=[['w','Lebar'],['h','Tinggi'],['sill','Ambang'],['d','Posisi'],['frameT','Tebal kusen']]}
 else if(sel.k==='st'){it=S.stairs.find(s=>s.id===sel.id);fields=[['w','Lebar']]}
 else if(sel.k==='vd'){it=S.voids.find(v=>v.id===sel.id);fields=[]}
 else if(sel.k==='bm'){it=S.beams.find(b=>b.id===sel.id);fields=[['bw','Lebar'],['bh','Tinggi'],['elev','Elev dari lantai']]}
@@ -774,7 +931,7 @@ case'wall':return{h:it.h,t:it.t,glass:!!it.glass,layers:cloneLayers(it.layers)};
 case'stair':return{w:it.w};
 case'col':return{w:it.w,d:it.d,h:it.h};
 case'beam':return{bw:it.bw,bh:it.bh};
-case'door':case'window':return{w:it.w,h:it.h,sill:it.sill};
+case'door':case'window':return{w:it.w,h:it.h,sill:it.sill,frameT:it.frameT};
 case'floor':return{t:it.t,layers:cloneLayers(it.layers)};
 case'roof':return{t:it.t,rise:it.rise,slopeDeg:it.slopeDeg,over:it.over,layers:cloneLayers(it.layers)};
 case'ceiling':return{t:it.t,elev:it.elev,layers:cloneLayers(it.layers)};
@@ -800,7 +957,7 @@ const kind=famKind(sel,it);if(!kind){alert('Elemen ini tidak mendukung tipe/fami
 const name=prompt('Nama tipe/family:',(it.info&&it.info.name)||kind);if(!name)return;
 S.families.push({id:S.id++,name,kind,attrs:extractAttrs(kind,it)});save();renderFamilies()};
 // ---------- 3D ----------
-const v3=$('v3'),ren=new THREE.WebGLRenderer({antialias:true,alpha:true});ren.localClippingEnabled=true;v3.appendChild(ren.domElement);
+const v3=$('v3'),ren=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});ren.localClippingEnabled=true;v3.appendChild(ren.domElement);
 const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,1,.1,500),ocam=new THREE.OrthographicCamera(-10,10,10,-10,.1,500),grp=new THREE.Group();scene.add(grp);
 scene.add(new THREE.HemisphereLight(0xffffff,0x888888,.75));const dl=new THREE.DirectionalLight(0xffffff,.7);dl.position.set(10,20,8);scene.add(dl);
 const gridH=new THREE.GridHelper(40,40,0x999999,0xcccccc);scene.add(gridH);
@@ -850,12 +1007,30 @@ const g=new THREE.BufferGeometry();
 g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
 if(g.computeVertexNormals)g.computeVertexNormals();
 const m=new THREE.Mesh(g,mat(colorHex,{side:THREE.DoubleSide}));m.position.set(0,baseY,0);return m}
-function buildPitchedPolyRoofMesh(pts,slopeDeg,baseY,colorHex){
+// Ketebalan atap miring (fascia/lisplang di bawah ujung/eave atap): h(x,y)=0 TEPAT di tepi poligon ASLI
+// (bukan tepi hasil triangulasi mesh internal), jadi tepi luar atap selalu berada di ketinggian dasar (flush
+// dengan atas dinding) — cukup buat pita quad vertikal di setiap sisi poligon asli, dari y=0 turun ke y=-t,
+// sama seperti arah ketebalan pada buildFlatPolyRoofMesh (tebal turun dari permukaan atas). Menggunakan
+// `res.base` (bukan `pts` mentah) karena itulah poligon yang benar-benar dipakai h() (sudah dibersihkan dari
+// titik dobel & dipastikan CCW), sehingga h(a)=h(b)=0 persis di tiap titik sudutnya.
+function buildRoofFasciaTris(basePts,t){
+const th=Math.max(0,+t||0);if(th<=1e-6)return[];
+const tris=[],n=basePts.length;
+for(let i=0;i<n;i++){const a=basePts[i],b=basePts[(i+1)%n];
+const at=[a[0],0,a[1]],bt=[b[0],0,b[1]],bb=[b[0],-th,b[1]],ab=[a[0],-th,a[1]];
+// winding verified to face outward (away from centroid): for a CCW footprint edge a->b, cross(bt-at,bb-at)
+// = t*(dy,0,-dx) which matches the outward 2D normal (dy,-dx) of a CCW polygon edge, mapped into the mesh's
+// (x,height,y-as-z) axes — same check performed automatically in the Playwright test for this feature.
+tris.push([at,bt,bb]);tris.push([at,bb,ab])}
+return tris}
+function buildPitchedPolyRoofMesh(pts,slopeDeg,baseY,colorHex,thickness){
 let res=null;try{res=adaptivePitchedRoofTriangles(pts,slopeDeg)}catch(e){res=null}
-if(!res||!res.tris||!res.tris.length)return buildFlatPolyRoofMesh(pts,.01,baseY+.01,colorHex);
-return meshFromRoofTris(res.tris,baseY,colorHex)}
+if(!res||!res.tris||!res.tris.length){const th=Math.max(.01,+thickness||.01);return buildFlatPolyRoofMesh(pts,th,baseY+th,colorHex)}
+const fascia=buildRoofFasciaTris(res.base,thickness);
+const allTris=fascia.length?res.tris.concat(fascia):res.tris;
+return meshFromRoofTris(allTris,baseY,colorHex)}
 function build(){while(grp.children.length)grp.remove(grp.children[0]);
-const mw=mat(0xd9d4c7),md=mat(0x8a5a2b),mg=mat(0x6cb4ee,{transparent:true,opacity:.45});let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+const mw=mat(0xd9d4c7),md=mat(0x8a5a2b),mg=mat(0x6cb4ee,{transparent:true,opacity:.45}),mf=mat(0x5a3d20);let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
 function layeredBox(w,dx,dy,dz,layers,cx0,cy0,cz0,axis){
 if(!layers||!layers.length){const b=new THREE.Mesh(new THREE.BoxGeometry(dx,dy,dz),w);b.position.set(cx0,cy0,cz0);return[b]}
 const out=[];
@@ -877,14 +1052,20 @@ const ops=S.ops.filter(o=>o.wall===w.id).map(o=>({o,x0:Math.max(0,o.d-o.w/2),x1:
 const add=(x0,x1,y0,y1,m)=>{if(x1-x0<.001||y1-y0<.001)return;const b=new THREE.Mesh(new THREE.BoxGeometry(x1-x0,y1-y0,w.t),m);b.position.set((x0+x1)/2,(y0+y1)/2,0);g.add(b)};
 const addSolid=(x0,x1,y0,y1)=>{if(x1-x0<.001||y1-y0<.001)return;for(const b of layeredBox(wm,x1-x0,y1-y0,w.t,useLayers,(x0+x1)/2,(y0+y1)/2,0,'z'))g.add(b)};
 const{extA,extB}=wallJoinExt(w);
+const addFrame=(fx0,fx1,fy0,fy1)=>{if(fx1-fx0<.001||fy1-fy0<.001)return;const b=new THREE.Mesh(new THREE.BoxGeometry(fx1-fx0,fy1-fy0,w.t),mf);b.position.set((fx0+fx1)/2,(fy0+fy1)/2,0);g.add(b)};
 let cur=-extA;for(const p of ops){addSolid(cur,p.x0,0,w.h);const y1=Math.min(w.h,p.o.sill+p.o.h);addSolid(p.x0,p.x1,0,p.o.sill);addSolid(p.x0,p.x1,y1,w.h);
 if(p.o.type==='window')add(p.x0,p.x1,p.o.sill,y1,mg);else add(p.x0,p.x1,p.o.sill,y1,md);
-if(p.o.type==='door'){g.children[g.children.length-1].scale.z=.25}else g.children[g.children.length-1].scale.z=.1;cur=Math.max(cur,p.x1)}
+if(p.o.type==='door'){g.children[g.children.length-1].scale.z=.25}else g.children[g.children.length-1].scale.z=.1;
+// --- kusen (frame): jamb kiri/kanan + ambang atas (+ ambang bawah utk jendela) di sekeliling bukaan ---
+const ft=Math.max(0,Math.min(p.o.frameT||.05,(p.x1-p.x0)/2-.005,(y1-p.o.sill)/2-.005));
+if(ft>.005){addFrame(p.x0,p.x0+ft,p.o.sill,y1);addFrame(p.x1-ft,p.x1,p.o.sill,y1);addFrame(p.x0,p.x1,y1-ft,y1);
+if(p.o.type==='window')addFrame(p.x0,p.x1,p.o.sill,p.o.sill+ft)}
+cur=Math.max(cur,p.x1)}
 addSolid(cur,L+extB,0,w.h);grp.add(g);
 for(const q of[w.a,w.b]){mnx=Math.min(mnx,q[0]);mny=Math.min(mny,q[1]);mxx=Math.max(mxx,q[0]);mxy=Math.max(mxy,q[1])}}
 for(const s of S.slabs){const by=levelElev(s.levelId),isRoof=s.kind==='roof',isCeil=s.kind==='ceiling';
 if(isRoof&&isPolySlab(s)){
-if((s.slopeDeg||0)>0)grp.add(buildPitchedPolyRoofMesh(s.pts,s.slopeDeg,by+s.elev,0xa8442f));
+if((s.slopeDeg||0)>0)grp.add(buildPitchedPolyRoofMesh(s.pts,s.slopeDeg,by+s.elev,0xa8442f,s.t));
 else grp.add(buildFlatPolyRoofMesh(s.pts,s.t,by+s.elev+s.t,0xa8442f));
 continue}
 const r=rect(s),o=isRoof?s.over:0,x0=r[0]-o,x1=r[2]+o,z0=r[1]-o,z1=r[3]+o,W=x1-x0,D=z1-z0;
@@ -924,7 +1105,7 @@ let cv2=0;for(const c of S.cols)cv2+=c.w*c.d*c.h;
 $('sched').innerHTML='<table><tr><th>Item</th><th>Jumlah</th><th>Satuan</th></tr>'+r('Jumlah lantai/level',S.levels.length,'level')+r('Tinggi total bangunan',S.levels.reduce((a,l)=>a+l.height,0).toFixed(2),'m')+r('Dinding',S.walls.length,'buah')+r('Panjang total dinding',L.toFixed(2),'m')+r('Luas dinding (bruto)',A.toFixed(2),'m²')+r('Luas dinding (neto, minus bukaan)',(A-oa).toFixed(2),'m²')+r('Luas curtain wall (kaca)',glassA.toFixed(2),'m²')+r('Pintu',nd,'buah')+r('Jendela',nw,'buah')+r('Kolom',S.cols.length,'buah')+r('Volume kolom',cv2.toFixed(2),'m³')+r('Balok',S.beams.length,'buah')+r('Panjang total balok',beamL.toFixed(2),'m')+r('Volume balok',beamV.toFixed(2),'m³')+r('Tangga',S.stairs.length,'buah')+r('Luas lantai',fa.toFixed(2),'m²')+r('Luas atap (permukaan)',ra.toFixed(2),'m²')+r('Luas plafon',cla.toFixed(2),'m²')+r('Luas void lantai',voidArea.toFixed(2),'m²')+r('Tipe/family tersimpan',S.families.length,'tipe')+'</table>'}
 function commit(keep){save();renderLevels();if(!keep)props();draw();build();sched();elist();renderFamSel()}
 $('exp').onclick=()=>{$('json').value=JSON.stringify(S,null,1);$('jsons').textContent='Data model disalin ke kotak di atas.'};
-$('imp').onclick=()=>{try{const d=JSON.parse($('json').value);S.walls=d.walls||[];S.ops=d.ops||[];S.slabs=d.slabs||[];S.cols=d.cols||[];S.dims=d.dims||[];S.notes=d.notes||[];S.stairs=d.stairs||[];S.voids=d.voids||[];S.beams=d.beams||[];S.families=d.families||[];S.section=d.section||null;S.levels=d.levels;S.cur=d.cur;S.id=d.id||100;migrate();sel=null;commit();renderFamilies();$('jsons').textContent='Data berhasil dimuat.'}catch(e){$('jsons').textContent='JSON tidak valid — periksa kembali isinya.'}};
+$('imp').onclick=()=>{try{const d=JSON.parse($('json').value);S.walls=d.walls||[];S.ops=d.ops||[];S.slabs=d.slabs||[];S.cols=d.cols||[];S.dims=d.dims||[];S.notes=d.notes||[];S.stairs=d.stairs||[];S.voids=d.voids||[];S.beams=d.beams||[];S.families=d.families||[];S.sheets=d.sheets||[];S.section=d.section||null;S.levels=d.levels;S.cur=d.cur;S.id=d.id||100;migrate();sel=null;commit();renderFamilies();$('jsons').textContent='Data berhasil dimuat.'}catch(e){$('jsons').textContent='JSON tidak valid — periksa kembali isinya.'}};
 // ---------- IFC export ----------
 function buildIFC(){
 const L=[];let n=0;
@@ -952,6 +1133,9 @@ function withLayerNote(info,layers){if(!layers||!layers.length)return info;
 const txt=layers.map(l=>`${l.name||'Lapisan'} (${l.material||'-'}, ${(+l.t).toFixed(3)}m)`).join(' | ');
 const base=info?Object.assign({},info,{custom:(info.custom||[]).slice()}):{name:'',material:'',notes:'',custom:[]};
 base.custom.push({k:'Lapisan',v:txt});return base}
+function withFrameNote(info,frameT){if(!frameT)return info;
+const base=info?Object.assign({},info,{custom:(info.custom||[]).slice()}):{name:'',material:'',notes:'',custom:[]};
+base.custom.push({k:'Kusen (frame)',v:(+frameT).toFixed(3)+' m'});return base}
 function attach(elId,info,defName){
 const nm=(info&&info.name)||defName;
 if(info&&info.material){const m=matEnt(info.material);e(`IFCRELASSOCIATESMATERIAL(${gid()},$,$,$,(${elId}),${m})`)}
@@ -982,7 +1166,7 @@ const opn=e(`IFCOPENINGELEMENT(${gid()},$,'Opening',$,$,${lp(wp,[x0,0,o.sill])},
 e(`IFCRELVOIDSELEMENT(${gid()},$,$,$,${wl},${opn})`);
 const isD=o.type==='door';
 const el=e(`${isD?'IFCDOOR':'IFCWINDOW'}(${gid()},$,${esc(isD?'Door':'Window')},$,$,${lp(wp,[x0,0,o.sill])},${shape(ext(rc(ow,w.t*.4,ow/2,0),oh))},$,${f(oh)},${f(ow)},${isD?'.DOOR.':'.WINDOW.'},.NOTDEFINED.,$)`);
-attach(el,o.info,isD?'Door':'Window');st.els.push(el);e(`IFCRELFILLSELEMENT(${gid()},$,$,$,${opn},${el})`)}});
+attach(el,withFrameNote(o.info,o.frameT),isD?'Door':'Window');st.els.push(el);e(`IFCRELFILLSELEMENT(${gid()},$,$,$,${opn},${el})`)}});
 S.cols.forEach((c,i)=>{const st=storeyOf[c.levelId];if(!st)return;const pl=lp(st.placement,[c.pos[0],c.pos[1],c.elev]);
 const nm='Column '+(i+1);const el=e(`IFCCOLUMN(${gid()},$,${esc(nm)},$,$,${pl},${shape(ext(rc(c.w,c.d,0,0),c.h))},$,.COLUMN.)`);attach(el,c.info,nm);st.els.push(el)});
 S.slabs.forEach((s,i)=>{const st=storeyOf[s.levelId];if(!st)return;
@@ -1092,7 +1276,280 @@ $('dxfb').onclick=()=>{if(!S.walls.length&&!S.slabs.length){$('ifcs').textConten
 const t=buildDXF();
 try{const u=URL.createObjectURL(new Blob([t],{type:'application/dxf'})),a=document.createElement('a');a.href=u;a.download='gilbim.dxf';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500)}catch(x){}
 $('ifcs').textContent='DXF (AC1015 ASCII, kompatibel AutoCAD/Revit/BricsCAD) dibuat — DWG biner asli tidak dibuat karena format tertutup dan tidak praktis ditulis manual.'};
+// ================= Lembar Kerja (Sheet) — print-ready title-block layout =================
+const _offCv=document.createElement('canvas');_offCv.style.position='fixed';_offCv.style.left='-99999px';_offCv.style.top='0';_offCv.style.pointerEvents='none';document.body.appendChild(_offCv);
+function levelBounds(id){
+let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9,any=false;
+for(const w of S.walls)if(w.levelId===id){any=true;for(const q of wallPts(w)){mnx=Math.min(mnx,q[0]);mxx=Math.max(mxx,q[0]);mny=Math.min(mny,q[1]);mxy=Math.max(mxy,q[1])}}
+for(const c of S.cols)if(c.levelId===id){any=true;mnx=Math.min(mnx,c.pos[0]-c.w/2);mxx=Math.max(mxx,c.pos[0]+c.w/2);mny=Math.min(mny,c.pos[1]-c.d/2);mxy=Math.max(mxy,c.pos[1]+c.d/2)}
+for(const s of S.slabs)if(s.levelId===id){any=true;for(const p of slabFootprint(s)){mnx=Math.min(mnx,p[0]);mxx=Math.max(mxx,p[0]);mny=Math.min(mny,p[1]);mxy=Math.max(mxy,p[1])}}
+for(const st of S.stairs)if(st.levelId===id){any=true;mnx=Math.min(mnx,st.a[0],st.b[0])-st.w;mxx=Math.max(mxx,st.a[0],st.b[0])+st.w;mny=Math.min(mny,st.a[1],st.b[1])-st.w;mxy=Math.max(mxy,st.a[1],st.b[1])+st.w}
+for(const bm of S.beams)if(bm.levelId===id){any=true;mnx=Math.min(mnx,bm.a[0],bm.b[0]);mxx=Math.max(mxx,bm.a[0],bm.b[0]);mny=Math.min(mny,bm.a[1],bm.b[1]);mxy=Math.max(mxy,bm.a[1],bm.b[1])}
+return any?{mnx,mny,mxx,mxy}:null}
+const SHEET_STD_SCALES=[20,25,50,75,100,125,150,200,250,300,400,500,750,1000,1250,1500,2000,2500,5000];
+function pickStdScale(nExact){for(const n of SHEET_STD_SCALES)if(n>=nExact)return n;return Math.ceil(nExact/500)*500}
+function paperSizeMM(sheet){const base=sheet.paper==='A3'?[297,420]:[210,297];return sheet.orientation==='landscape'?[base[1],base[0]]:base}
+// Render the 2D plan for one level into a rectangle of another canvas's context, fit-to-bounds, snapped to
+// the nearest standard architectural scale (1:50/1:100/…) that still fits. Chosen approach: temporarily point
+// the LIVE plan renderer's own globals (cv/cx/S.cur/view) at an offscreen canvas + desired level + computed
+// fit pan/zoom, call the UNCHANGED draw(), capture the pixels, then restore everything exactly in finally —
+// preferred over refactoring draw() into a parameter-driven core because draw() is long, deeply hardwired to
+// cv/cx/sc/view and interleaves selection/hover/tool overlays; swapping globals for one synchronous call
+// carries far less risk of regressing the live plan editor.
+function drawPlanIntoRect(levelId,ctx,X,Y,W,H,pxPerMM){
+const pxW=Math.max(1,Math.round(W)),pxH=Math.max(1,Math.round(H));
+const oCv=cv,oCx=cx,oCur=S.cur,oView=view;
+let label='—';
+try{
+_offCv.style.width=pxW+'px';_offCv.style.height=pxH+'px';
+cv=_offCv;cx=_offCv.getContext('2d');
+S.cur=levelId;
+const b=levelBounds(levelId);
+const bw=b?Math.max(.5,b.mxx-b.mnx):WX,bh=b?Math.max(.5,b.mxy-b.mny):WY;
+const cxw=b?(b.mnx+b.mxx)/2:WX/2,cyw=b?(b.mny+b.mxy)/2:WY/2;
+const bScale=Math.min(pxW/WX,pxH/WY)||1;
+const marginFrac=.07;
+const scaleExact=Math.min(pxW*(1-2*marginFrac)/bw,pxH*(1-2*marginFrac)/bh);
+const nExact=1000*pxPerMM/Math.max(1e-6,scaleExact);
+const nStd=pickStdScale(nExact);
+const scaleFinal=1000*pxPerMM/nStd;
+view={zoom:scaleFinal/bScale,panX:pxW/2-scaleFinal*cxw,panY:pxH/2-scaleFinal*cyw};
+draw();
+ctx.drawImage(cv,0,0,pxW,pxH,X,Y,W,H);
+label='1:'+nStd;
+}catch(e){}
+finally{cv=oCv;cx=oCx;S.cur=oCur;view=oView}
+return label}
+// Render one of the 3D/ortho views into a rectangle, reusing the SAME live WebGL canvas: viewMode is swapped
+// just for one render() call, then swapped back and re-rendered so the user's live 3D view is never
+// disturbed. Requires the renderer to have been built with preserveDrawingBuffer:true (added at its
+// construction above) so the frame just drawn is still readable via drawImage right after render().
+function draw3IntoRect(kind,ctx,X,Y,W,H){
+if(kind==='section'&&!S.section)return false;
+const savedMode=viewMode;
+try{viewMode=kind;render3();
+ctx.drawImage(ren.domElement,0,0,ren.domElement.width||1,ren.domElement.height||1,X,Y,W,H);
+return true}
+catch(e){return false}
+finally{viewMode=savedMode;render3()}}
+function sheetViewportKindLabel(k){return{plan:'DENAH',front:'TAMPAK DEPAN',back:'TAMPAK BELAKANG',left:'TAMPAK KIRI',right:'TAMPAK KANAN',section:'POTONGAN','3d':'3D'}[k]||k}
+function renderSheetToCanvas(sheet,targetCanvas,pxPerMM){
+const[pw,ph]=paperSizeMM(sheet);
+targetCanvas.width=Math.max(1,Math.round(pw*pxPerMM));targetCanvas.height=Math.max(1,Math.round(ph*pxPerMM));
+const g=targetCanvas.getContext('2d');
+g.fillStyle='#ffffff';g.fillRect(0,0,targetCanvas.width,targetCanvas.height);
+g.strokeStyle='#000';g.lineWidth=Math.max(1,.3*pxPerMM);
+const margin=10;
+g.strokeRect(margin*pxPerMM,margin*pxPerMM,(pw-2*margin)*pxPerMM,(ph-2*margin)*pxPerMM);
+const capMM=7;
+for(const vp of(sheet.viewports||[])){
+const X=vp.x*pxPerMM,Y=vp.y*pxPerMM,W=Math.max(1,vp.w*pxPerMM),H=Math.max(2,vp.h*pxPerMM);
+const imgH=Math.max(1,H-capMM*pxPerMM);
+g.save();g.strokeStyle='#555';g.lineWidth=Math.max(1,.25*pxPerMM);g.strokeRect(X,Y,W,imgH);
+g.beginPath();g.rect(X+1,Y+1,Math.max(0,W-2),Math.max(0,imgH-2));g.clip();
+let scaleLbl=vp.scaleLabel||'';
+try{
+if(vp.kind==='plan')scaleLbl=drawPlanIntoRect(vp.levelId,g,X+1,Y+1,W-2,imgH-2,pxPerMM);
+else{const ok=draw3IntoRect(vp.kind,g,X+1,Y+1,W-2,imgH-2);
+if(!ok){g.fillStyle='#999';g.font=(3*pxPerMM)+'px sans-serif';g.fillText('Garis potongan belum diatur',X+6,Y+imgH/2)}}
+}catch(e){}
+g.restore();
+g.fillStyle='#000';g.font='bold '+(2.6*pxPerMM)+'px sans-serif';g.textAlign='center';
+const cap=(vp.caption||sheetViewportKindLabel(vp.kind))+(scaleLbl&&vp.kind==='plan'?' — SKALA '+scaleLbl:(scaleLbl&&vp.kind!=='plan'?' — '+scaleLbl:''));
+g.fillText(cap,X+W/2,Y+imgH+capMM*pxPerMM*.72);
+g.textAlign='left'}
+// title block — bottom-right box (universal drafting convention)
+const tbW=Math.min(pw-2*margin,pw>=350?180:140),tbH=pw>=350?40:34;
+const tbX=pw-margin-tbW,tbY=ph-margin-tbH;
+const X=tbX*pxPerMM,Y=tbY*pxPerMM,W=tbW*pxPerMM,H=tbH*pxPerMM;
+g.strokeStyle='#000';g.lineWidth=Math.max(1,.3*pxPerMM);g.fillStyle='#fff';g.fillRect(X,Y,W,H);g.strokeRect(X,Y,W,H);
+const rows=[['Proyek',sheet.project||'-'],['Judul Gambar',sheet.title||'-'],['Skala',sheet.scaleLabel||'Lihat per-viewport'],['Digambar oleh',sheet.drawnBy||'-'],['Tanggal',sheet.date||'-'],['No. Lembar',sheet.sheetNo||'-']];
+const brandH=H*.26;
+g.fillStyle='#0f6e56';g.font='bold '+(brandH*.62)+'px sans-serif';g.textAlign='left';g.textBaseline='middle';
+g.fillText('GilBIM',X+4,Y+brandH/2+1);
+g.strokeStyle='#000';g.lineWidth=Math.max(.6,.15*pxPerMM);g.beginPath();g.moveTo(X,Y+brandH);g.lineTo(X+W,Y+brandH);g.stroke();
+const rowH=(H-brandH)/rows.length,labW=W*.4;
+rows.forEach((r,i)=>{const ry=Y+brandH+i*rowH;
+g.beginPath();g.moveTo(X,ry);g.lineTo(X+W,ry);g.stroke();
+g.beginPath();g.moveTo(X+labW,ry);g.lineTo(X+labW,ry+rowH);g.stroke();
+g.font=(rowH*.42)+'px sans-serif';g.fillStyle='#555';g.fillText(r[0],X+3,ry+rowH/2+1);
+g.fillStyle='#000';g.font='bold '+(rowH*.42)+'px sans-serif';g.fillText(String(r[1]),X+labW+4,ry+rowH/2+1)});
+g.textBaseline='alphabetic'}
+function printSheet(sh){
+const[pw,ph]=paperSizeMM(sh);
+const printCanvas=document.createElement('canvas');
+renderSheetToCanvas(sh,printCanvas,6);
+const holder=$('printSheetHolder');holder.innerHTML='';
+const img=document.createElement('img');img.src=printCanvas.toDataURL('image/png');
+img.style.display='block';
+holder.appendChild(img);
+let st=document.getElementById('printSheetDynStyle');
+if(!st){st=document.createElement('style');st.id='printSheetDynStyle';document.head.appendChild(st)}
+st.textContent='@page{size:'+pw+'mm '+ph+'mm;margin:0}@media print{#printSheetHolder img{width:'+pw+'mm;height:'+ph+'mm;display:block}}';
+setTimeout(()=>window.print(),50)}
+let curSheetId=(S.sheets[0]&&S.sheets[0].id)||null;
+let sheetVpSel=null,sheetDrag=null;
+const mmSnap=v=>Math.round(v);
+function todayStr(){return new Date().toISOString().slice(0,10)}
+function curSheet(){return S.sheets.find(s=>s.id===curSheetId)||null}
+function newSheetViewport(kind){return{id:S.id++,kind,levelId:S.cur,caption:'',x:10,y:10,w:100,h:80,scaleLabel:''}}
+// ---------- interactive viewport positioning on the sheet preview (drag body / resize handles, snapped to mm) ----------
+function vpHandlePoints(vp){return[
+['nw',vp.x,vp.y],['n',vp.x+vp.w/2,vp.y],['ne',vp.x+vp.w,vp.y],
+['w',vp.x,vp.y+vp.h/2],['e',vp.x+vp.w,vp.y+vp.h/2],
+['sw',vp.x,vp.y+vp.h],['s',vp.x+vp.w/2,vp.y+vp.h],['se',vp.x+vp.w,vp.y+vp.h]]}
+function vpHandleAt(vp,mx,my,tolMM){for(const[name,hx,hy] of vpHandlePoints(vp))if(Math.hypot(mx-hx,my-hy)<=tolMM)return name;return null}
+function vpHitAt(sh,mx,my){const vps=sh.viewports||[];for(let i=vps.length-1;i>=0;i--){const vp=vps[i];if(mx>=vp.x&&mx<=vp.x+vp.w&&my>=vp.y&&my<=vp.y+vp.h)return vp}return null}
+function clampViewportToPage(vp,pw,ph){const minS=5;
+vp.w=Math.min(pw,Math.max(minS,vp.w));vp.h=Math.min(ph,Math.max(minS,vp.h));
+vp.x=Math.max(0,Math.min(pw-vp.w,vp.x));vp.y=Math.max(0,Math.min(ph-vp.h,vp.y))}
+function sheetCanvasToMM(e,canvas,pxPerMM){const r=canvas.getBoundingClientRect();
+const sx=canvas.width/(r.width||1),sy=canvas.height/(r.height||1);
+return[((e.clientX-r.left)*sx)/pxPerMM,((e.clientY-r.top)*sy)/pxPerMM]}
+function addSheet(){
+const[pw,ph]=paperSizeMM({paper:'A3',orientation:'landscape'});
+const margin=10,titleH=40,gap=6;
+const sh={id:S.id++,name:'A3-'+String(S.sheets.length+1).padStart(2,'0'),paper:'A3',orientation:'landscape',
+project:'Proyek GilBIM',title:'Denah',drawnBy:'',date:todayStr(),sheetNo:'A-'+String(S.sheets.length+1).padStart(2,'0'),scaleLabel:'',
+viewports:[{id:S.id++,kind:'plan',levelId:S.cur,caption:'Denah '+(curLevel()?curLevel().name:''),x:margin,y:margin,w:pw-2*margin,h:ph-2*margin-titleH-gap,scaleLabel:''}]};
+S.sheets.push(sh);curSheetId=sh.id;sheetVpSel=null;save();renderSheetPanel()}
+function renderSheetPanel(){
+const el=$('sheetUI');if(!el)return;el.innerHTML='';
+const listWrap=document.createElement('div');listWrap.className='row';listWrap.style.flexWrap='wrap';listWrap.style.marginBottom='8px';
+S.sheets.forEach(sh=>{
+const b=document.createElement('button');b.className='sm'+(sh.id===curSheetId?' on':'');
+b.textContent=sh.name+' ('+sh.paper+(sh.orientation==='landscape'?' L':' P')+')';
+b.onclick=()=>{curSheetId=sh.id;sheetVpSel=null;renderSheetPanel()};
+listWrap.appendChild(b)});
+const addBtn=document.createElement('button');addBtn.className='sm';addBtn.textContent='+ Tambah Lembar';addBtn.onclick=addSheet;
+listWrap.appendChild(addBtn);
+el.appendChild(listWrap);
+const sh=curSheet();
+if(!sh){const p=document.createElement('p');p.style.cssText='color:var(--mut);font-size:12px';p.textContent='Belum ada lembar kerja. Klik "+ Tambah Lembar" untuk membuat lembar A3/A4 dengan title block GilBIM.';el.appendChild(p);return}
+const form=document.createElement('div');
+const mkRow=(labelTxt,inputEl)=>{const row=document.createElement('div');row.className='row';row.style.marginBottom='4px';
+const lb=document.createElement('label');lb.textContent=labelTxt;lb.style.minWidth='110px';row.append(lb,inputEl);return row};
+const topRow=document.createElement('div');topRow.className='row';topRow.style.marginBottom='6px';
+const nmIn=document.createElement('input');nmIn.type='text';nmIn.value=sh.name;nmIn.onchange=()=>{sh.name=nmIn.value||sh.name;save();renderSheetPanel()};
+const dup=document.createElement('button');dup.className='sm';dup.textContent='Duplikat';dup.onclick=()=>{const copy=JSON.parse(JSON.stringify(sh));copy.id=S.id++;copy.name=sh.name+' (copy)';copy.viewports.forEach(v=>v.id=S.id++);S.sheets.push(copy);curSheetId=copy.id;sheetVpSel=null;save();renderSheetPanel()};
+const delB=document.createElement('button');delB.className='sm';delB.style.color='#c0392b';delB.textContent='Hapus Lembar';delB.onclick=()=>{if(!confirm('Hapus lembar "'+sh.name+'"?'))return;S.sheets=S.sheets.filter(x=>x.id!==sh.id);curSheetId=S.sheets[0]?S.sheets[0].id:null;sheetVpSel=null;save();renderSheetPanel()};
+topRow.append(nmIn,dup,delB);form.appendChild(topRow);
+const paperSel=document.createElement('select');['A4','A3'].forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;if(sh.paper===p)o.selected=true;paperSel.appendChild(o)});
+paperSel.onchange=()=>{sh.paper=paperSel.value;save();renderSheetPanel()};
+const oriSel=document.createElement('select');[['landscape','Landscape'],['portrait','Portrait']].forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if(sh.orientation===v)o.selected=true;oriSel.appendChild(o)});
+oriSel.onchange=()=>{sh.orientation=oriSel.value;save();renderSheetPanel()};
+form.appendChild(mkRow('Ukuran kertas',paperSel));
+form.appendChild(mkRow('Orientasi',oriSel));
+const mkText=(field,ph)=>{const i=document.createElement('input');i.type='text';i.value=sh[field]||'';i.placeholder=ph||'';i.style.flex='1';i.onchange=()=>{sh[field]=i.value;save();updatePreview()};return i};
+form.appendChild(mkRow('Proyek',mkText('project')));
+form.appendChild(mkRow('Judul Gambar',mkText('title')));
+form.appendChild(mkRow('Skala (opsional)',mkText('scaleLabel','mis. 1:100')));
+form.appendChild(mkRow('Digambar oleh',mkText('drawnBy')));
+const dateIn=document.createElement('input');dateIn.type='date';dateIn.value=sh.date||todayStr();dateIn.onchange=()=>{sh.date=dateIn.value;save();updatePreview()};
+form.appendChild(mkRow('Tanggal',dateIn));
+form.appendChild(mkRow('No. Lembar',mkText('sheetNo')));
+el.appendChild(form);
+if(sheetVpSel!=null&&!(sh.viewports||[]).some(v=>v.id===sheetVpSel))sheetVpSel=null;
+const vpFieldEls={};
+const vpWrap=document.createElement('div');vpWrap.style.marginTop='8px';
+const vpH=document.createElement('div');vpH.className='tglbl';vpH.textContent='Viewport';vpWrap.appendChild(vpH);
+(sh.viewports||[]).forEach(vp=>{
+const row=document.createElement('div');row.className='row';row.style.cssText='border-top:1px dashed var(--line);padding-top:4px;margin-top:4px;flex-wrap:wrap';
+if(vp.id===sheetVpSel)row.style.background='rgba(15,110,86,.08)';
+const selBtn=document.createElement('button');selBtn.className='sm'+(vp.id===sheetVpSel?' on':'');selBtn.textContent=vp.id===sheetVpSel?'● Terpilih':'Pilih';
+selBtn.onclick=()=>{sheetVpSel=vp.id;renderSheetPanel()};
+row.appendChild(selBtn);
+const kindSel=document.createElement('select');
+[['plan','Denah'],['front','Tampak Depan'],['back','Tampak Belakang'],['left','Tampak Kiri'],['right','Tampak Kanan'],['section','Potongan'],['3d','3D']].forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if(vp.kind===v)o.selected=true;kindSel.appendChild(o)});
+kindSel.onchange=()=>{vp.kind=kindSel.value;save();renderSheetPanel()};
+row.appendChild(kindSel);
+if(vp.kind==='plan'){
+const lvlSel=document.createElement('select');
+S.levels.forEach(lv=>{const o=document.createElement('option');o.value=lv.id;o.textContent=lv.name;if(vp.levelId===lv.id)o.selected=true;lvlSel.appendChild(o)});
+lvlSel.onchange=()=>{vp.levelId=+lvlSel.value;save();updatePreview()};
+row.appendChild(lvlSel)}
+const capIn=document.createElement('input');capIn.type='text';capIn.placeholder='Keterangan';capIn.value=vp.caption||'';capIn.style.width='120px';capIn.onchange=()=>{vp.caption=capIn.value;save();updatePreview()};
+row.appendChild(capIn);
+const fEls={};vpFieldEls[vp.id]=fEls;
+[['x','X'],['y','Y'],['w','W'],['h','H']].forEach(([f,lbl])=>{
+const lb=document.createElement('label');lb.textContent=lbl+'(mm)';
+const inp=document.createElement('input');inp.type='number';inp.step='1';inp.value=mmSnap(vp[f]);inp.style.width='60px';
+inp.onchange=()=>{vp[f]=mmSnap(+inp.value||0);const[pw,ph]=paperSizeMM(sh);clampViewportToPage(vp,pw,ph);syncVpFields(vp);save();updatePreview()};
+row.append(lb,inp);fEls[f]=inp});
+const rm=document.createElement('button');rm.className='sm';rm.textContent='Hapus Viewport';rm.onclick=()=>{sh.viewports=sh.viewports.filter(v=>v.id!==vp.id);if(sheetVpSel===vp.id)sheetVpSel=null;save();renderSheetPanel()};
+row.appendChild(rm);
+vpWrap.appendChild(row)});
+const addVp=document.createElement('button');addVp.className='sm';addVp.style.marginTop='6px';addVp.textContent='+ Tambah Viewport';
+addVp.onclick=()=>{sh.viewports=sh.viewports||[];const nv=newSheetViewport('plan');sh.viewports.push(nv);sheetVpSel=nv.id;save();renderSheetPanel()};
+vpWrap.appendChild(addVp);
+el.appendChild(vpWrap);
+function syncVpFields(vp){const els=vpFieldEls[vp.id];if(!els)return;
+if(els.x)els.x.value=mmSnap(vp.x);if(els.y)els.y.value=mmSnap(vp.y);if(els.w)els.w.value=mmSnap(vp.w);if(els.h)els.h.value=mmSnap(vp.h)}
+const hint2=document.createElement('p');hint2.style.cssText='color:var(--mut);font-size:11px;margin:2px 0 6px';
+hint2.textContent='Klik "Pilih" atau klik langsung di dalam viewport pada pratinjau di bawah untuk memilihnya (kotak hijau + gagang). Geser badan viewport terpilih untuk memindahkan, atau tarik gagang di sudut/tepi untuk mengubah ukuran — posisi & ukuran mengunci ke milimeter bulat (snap 1 mm).';
+vpWrap.appendChild(hint2);
+const prevWrap=document.createElement('div');prevWrap.style.marginTop='10px';
+const prevCanvas=document.createElement('canvas');prevCanvas.id='sheetPreview';prevCanvas.style.touchAction='none';prevCanvas.style.cursor='default';
+prevWrap.appendChild(prevCanvas);
+const expRow=document.createElement('div');expRow.className='row';expRow.style.marginTop='6px';
+const pngBtn=document.createElement('button');pngBtn.textContent='Unduh PNG';
+pngBtn.onclick=()=>{const hi=document.createElement('canvas');renderSheetToCanvas(sh,hi,6);
+hi.toBlob(blob=>{if(!blob)return;const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='gilbim-sheet-'+(sh.name||'lembar').replace(/[^a-z0-9-_]+/gi,'_')+'.png';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)},'image/png')};
+expRow.appendChild(pngBtn);
+const printBtn=document.createElement('button');printBtn.textContent='Cetak / PDF';
+printBtn.onclick=()=>printSheet(sh);
+expRow.appendChild(printBtn);
+prevWrap.appendChild(expRow);
+const note=document.createElement('p');note.style.cssText='color:var(--mut);font-size:12px;margin:6px 0 0';note.textContent='Pratinjau diperbarui otomatis di atas. "Cetak / PDF" membuka dialog cetak browser dengan lembar berukuran kertas sebenarnya (pilih "Simpan sebagai PDF" pada dialog cetak untuk menghasilkan PDF).';
+prevWrap.appendChild(note);
+el.appendChild(prevWrap);
+const PXMM=2.6;
+function drawVpOverlay(){
+if(sheetVpSel==null)return;
+const vp=(sh.viewports||[]).find(v=>v.id===sheetVpSel);if(!vp)return;
+const g=prevCanvas.getContext('2d');g.save();
+g.strokeStyle='#0f6e56';g.lineWidth=2;g.setLineDash([4,2]);
+g.strokeRect(vp.x*PXMM,vp.y*PXMM,vp.w*PXMM,vp.h*PXMM);g.setLineDash([]);
+g.fillStyle='#0f6e56';const hp=4;
+for(const[,hx,hy] of vpHandlePoints(vp)){g.fillRect(hx*PXMM-hp,hy*PXMM-hp,hp*2,hp*2)}
+g.restore()}
+function updatePreview(){renderSheetToCanvas(sh,prevCanvas,PXMM);drawVpOverlay()}
+prevCanvas.addEventListener('pointerdown',e=>{
+const[mx,my]=sheetCanvasToMM(e,prevCanvas,PXMM);
+if(sheetVpSel!=null){
+const cvp=(sh.viewports||[]).find(v=>v.id===sheetVpSel);
+if(cvp){const hn=vpHandleAt(cvp,mx,my,8/PXMM);
+if(hn){sheetDrag={kind:'resize',handle:hn,vp:cvp,orig:{x:cvp.x,y:cvp.y,w:cvp.w,h:cvp.h},start:[mx,my]};try{prevCanvas.setPointerCapture(e.pointerId)}catch(x){}e.preventDefault();return}}}
+const hitVp=vpHitAt(sh,mx,my);
+if(hitVp){
+if(sheetVpSel===hitVp.id){sheetDrag={kind:'move',vp:hitVp,orig:{x:hitVp.x,y:hitVp.y,w:hitVp.w,h:hitVp.h},start:[mx,my]};try{prevCanvas.setPointerCapture(e.pointerId)}catch(x){}e.preventDefault()}
+else{sheetVpSel=hitVp.id;renderSheetPanel()}
+}else if(sheetVpSel!=null){sheetVpSel=null;renderSheetPanel()}
+});
+prevCanvas.addEventListener('pointermove',e=>{
+if(!sheetDrag)return;
+const[mx,my]=sheetCanvasToMM(e,prevCanvas,PXMM);
+const[pw,ph]=paperSizeMM(sh);
+const vp=sheetDrag.vp,o=sheetDrag.orig,dx=mx-sheetDrag.start[0],dy=my-sheetDrag.start[1];
+if(sheetDrag.kind==='move'){vp.x=mmSnap(o.x+dx);vp.y=mmSnap(o.y+dy)}
+else{const h=sheetDrag.handle;let nx=o.x,ny=o.y,nw=o.w,nh=o.h;
+if(h.includes('n')){ny=o.y+dy;nh=o.h-dy}
+if(h.includes('s')){nh=o.h+dy}
+if(h.includes('w')){nx=o.x+dx;nw=o.w-dx}
+if(h.includes('e')){nw=o.w+dx}
+if(nw<5){if(h.includes('w'))nx=o.x+o.w-5;nw=5}
+if(nh<5){if(h.includes('n'))ny=o.y+o.h-5;nh=5}
+vp.x=mmSnap(nx);vp.y=mmSnap(ny);vp.w=mmSnap(nw);vp.h=mmSnap(nh)}
+clampViewportToPage(vp,pw,ph);
+const els=vpFieldEls[vp.id];if(els){if(els.x)els.x.value=mmSnap(vp.x);if(els.y)els.y.value=mmSnap(vp.y);if(els.w)els.w.value=mmSnap(vp.w);if(els.h)els.h.value=mmSnap(vp.h)}
+updatePreview();
+e.preventDefault()
+});
+const endSheetDrag=()=>{if(sheetDrag){sheetDrag=null;save()}};
+prevCanvas.addEventListener('pointerup',endSheetDrag);
+prevCanvas.addEventListener('pointercancel',endSheetDrag);
+updatePreview()}
 addEventListener('resize',()=>{size3();draw()});
 $('gh').value=curLevel().height;
-hint();size3();draw();build();sched();props();renderLevels();elist();renderFamilies();
+hint();size3();draw();build();sched();props();renderLevels();elist();renderFamilies();renderSheetPanel();
 </script></body></html>
